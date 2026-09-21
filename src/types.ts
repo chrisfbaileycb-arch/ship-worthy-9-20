@@ -370,22 +370,110 @@ export interface AppAuditReport {
   createdAt: string;
 }
 
+export type LifecyclePhase = "in_development" | "ready_for_deployment" | "deployed_monitored";
+export type ProjectScope = "master_core_ip" | "client_deliverable";
+
+export interface CadenceTaskItem {
+  id: string;
+  label: string;
+  done: boolean;
+  category: "triage" | "security" | "version_dependency" | "compliance_rotation";
+}
+
+export interface CadenceMilestone {
+  stage: "day30" | "day60" | "day90" | "day180";
+  title: string;
+  daysTarget: number;
+  dueDate: string;
+  completed: boolean;
+  completedDate?: string;
+  status: "CLEAR" | "DUE_SOON" | "OVERDUE";
+  description: string;
+  tasks: CadenceTaskItem[];
+}
+
+export interface CadenceScheduleDetailed {
+  day30: CadenceMilestone;
+  day60: CadenceMilestone;
+  day90: CadenceMilestone;
+  day180: CadenceMilestone;
+}
+
+export interface LiveHeaderItem {
+  name: string;
+  value: string;
+  status: "PASSED" | "WARNING" | "MISSING";
+  description: string;
+  remediation: string;
+}
+
+export interface LiveDomInspection {
+  framework: string;
+  pwaManifestDetected: boolean;
+  manifestUrl?: string;
+  serviceWorkerDetected: boolean;
+  metaTagsCount: number;
+  scriptsCount: number;
+  externalDependencies: string[];
+}
+
+export interface LiveInspectionReport {
+  target: string;
+  checkedAt: string;
+  status: "PASSED" | "WARNING" | "ATTENTION";
+  overallScore: number;
+  headers: LiveHeaderItem[];
+  domInspection: LiveDomInspection;
+  recommendations: string[];
+}
+
+export interface InDevelopmentAudit {
+  linting: { status: "PASSED" | "WARNING" | "FAILED"; details: string };
+  secrets: { status: "PASSED" | "WARNING" | "FAILED"; details: string };
+  vulnerabilities: { status: "PASSED" | "WARNING" | "FAILED"; details: string };
+  lastRunAt: string;
+  readyForPromotion: boolean;
+}
+
+export interface PreFlightMatrixStatus {
+  securityHeaders: { status: "PASSED" | "WARNING" | "FAILED"; score: number; details: string };
+  wcagContrastAria: { status: "PASSED" | "WARNING" | "FAILED"; score: number; details: string };
+  legalComplianceIdempotency: { status: "PASSED" | "WARNING" | "FAILED"; score: number; details: string };
+  errorBoundaryPortIsolation: { status: "PASSED" | "WARNING" | "FAILED"; score: number; details: string };
+  readinessScore: number; // 0 - 100
+  blockingFlags: string[];
+  isClearedForDeployment: boolean;
+  lastAuditedAt: string;
+}
+
 export interface AppRegistryItem {
   id: string;
   name: string;
   description: string;
+  organization?: string;
+  owner?: string;
   repoUrl?: string;
   liveUrl?: string;
+  sourceInput?: string;
+  sourceType?: "github" | "live_url" | "both";
+  projectScope: ProjectScope;
+  lifecyclePhase: LifecyclePhase;
   environment: "Production" | "Staging" | "Development";
   launchDate: string;
   readinessScore: number;
-  status: "Live & Healthy" | "Maintenance Due" | "Pre-Flight Pending" | "Critical Alert";
+  status: "Live & Healthy" | "Maintenance Due" | "Pre-Flight Pending" | "Critical Alert" | "In Development";
   daysSinceLaunch: number;
   cadenceStatus: {
     day30Completed: boolean;
     day90Completed: boolean;
     day180Completed: boolean;
   };
+  cadenceScheduleDetailed?: CadenceScheduleDetailed;
+  inDevelopmentAudit?: InDevelopmentAudit;
+  preFlightMatrix?: PreFlightMatrixStatus;
+  liveInspection?: LiveInspectionReport;
+  dossierSignature?: string;
+  dossierGeneratedAt?: string;
   lastAuditId?: string;
   activeAlertsCount: number;
 }

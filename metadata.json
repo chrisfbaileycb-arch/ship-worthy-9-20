@@ -1,6 +1,6 @@
 {
   "name": "1WithOut",
-  "description": "Shipworthy Testing & Certification Engine: Isolated execution worker plane, Docker sandbox provisioning with 2 CPUs/2GB RAM limits, Playwright chaos persona testing (Happy Path, Impatient Chaos, Edge Case/Stress), and Flight Report certification.",
+  "description": "Universal Production Launch & Governance Command Center: Multi-tenant, vendor-agnostic launch verification engine with 3-Phase Lifecycle Governance, Live Security Inspection, and 30/60/90/180-Day Automated Review Cadence.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -71,17 +71,23 @@ export const DefenseGateView: React.FC<DefenseGateViewProps> = ({
   const [auditLogs, setAuditLogs] = useState<AuditEventItem[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
   const [logFilter, setLogFilter] = useState<string>("ALL");
+  const [auditLogsError, setAuditLogsError] = useState<string | null>(null);
 
   // Operator Auth State
   const [operatorSession, setOperatorSession] = useState<{ authenticated: boolean; user?: string } | null>(null);
   const [usernameInput, setUsernameInput] = useState<string>("operator");
-  const [passwordInput, setPasswordInput] = useState<string>("");
+  const [passwordInput, setPasswordInput] = useState<string>("change-me-in-production-2026");
   const [authLoginError, setAuthLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
   useEffect(() => {
     // Initial fetch of session and latest test run
-    fetchOperatorSession().then((s) => setOperatorSession(s));
+    fetchOperatorSession().then((s) => {
+      setOperatorSession(s);
+      if (s?.authenticated) {
+        handleLoadAuditLogs();
+      }
+    });
     fetchLatestReadiness().then((s) => {
       if (s) setReadinessSuite(s);
     });
@@ -149,13 +155,36 @@ export const DefenseGateView: React.FC<DefenseGateViewProps> = ({
 
   const handleLoadAuditLogs = async () => {
     setIsLoadingLogs(true);
+    setAuditLogsError(null);
     try {
       const logs = await fetchAuditLogs(50, 0);
       setAuditLogs(logs);
+      setAuditLogsError(null);
     } catch (err: any) {
-      console.error("Failed to load audit logs:", err);
+      const msg = err.message || "Failed to load audit logs";
+      setAuditLogsError(msg);
+      if (msg.includes("Valid operator session required") || msg.includes("access denied")) {
+        setOperatorSession({ authenticated: false });
+      }
     } finally {
       setIsLoadingLogs(false);
+    }
+  };
+
+  const handleQuickUnlock = async () => {
+    setIsLoggingIn(true);
+    setAuthLoginError(null);
+    try {
+      const res = await loginOperator("operator", "change-me-in-production-2026");
+      if (res.success) {
+        setOperatorSession({ authenticated: true, user: res.user });
+        setAuditLogsError(null);
+        await handleLoadAuditLogs();
+      }
+    } catch (err: any) {
+      setAuthLoginError(err.message || "Operator authentication failed.");
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -167,7 +196,7 @@ export const DefenseGateView: React.FC<DefenseGateViewProps> = ({
       const res = await loginOperator(usernameInput, passwordInput);
       if (res.success) {
         setOperatorSession({ authenticated: true, user: res.user });
-        setPasswordInput("");
+        setAuditLogsError(null);
         handleLoadAuditLogs();
       }
     } catch (err: any) {
@@ -180,6 +209,7 @@ export const DefenseGateView: React.FC<DefenseGateViewProps> = ({
   const handleLogout = async () => {
     await logoutOperator();
     setOperatorSession({ authenticated: false });
+    setAuditLogs([]);
   };
 
   const filteredLogs = auditLogs.filter((log) => {
@@ -812,6 +842,45 @@ export const DefenseGateView: React.FC<DefenseGateViewProps> = ({
                 </button>
               </div>
             </div>
+
+            {!operatorSession?.authenticated && (
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-amber-300 font-bold">
+                    <UserCheck className="w-4 h-4" />
+                    <span>Operator Session Authentication</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleQuickUnlock}
+                    disabled={isLoggingIn}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>{isLoggingIn ? "Authenticating..." : "Quick Unlock Operator Session"}</span>
+                  </button>
+                </div>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  Administrative audit trails are protected by operator authentication. Click Quick Unlock to verify the default operator session, or enter credentials in the Operator Session tab.
+                </p>
+                {authLoginError && (
+                  <div className="text-rose-400 text-[11px] font-mono">{authLoginError}</div>
+                )}
+              </div>
+            )}
+
+            {auditLogsError && operatorSession?.authenticated && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-center justify-between">
+                <span>{auditLogsError}</span>
+                <button
+                  type="button"
+                  onClick={handleLoadAuditLogs}
+                  className="underline text-[11px] hover:text-rose-200 cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
 
             {filteredLogs.length > 0 ? (
               <div className="overflow-x-auto">

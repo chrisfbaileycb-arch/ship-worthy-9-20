@@ -170,12 +170,54 @@ export async function processPipeline(
   return await res.json();
 }
 
+const SESSION_ID_KEY = "1without_operator_session_id";
+const LOGGED_OUT_KEY = "1without_explicitly_logged_out";
+
+export function getStoredOperatorSessionId(): string | null {
+  try {
+    return localStorage.getItem(SESSION_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredOperatorSessionId(sessionId: string | null): void {
+  try {
+    if (sessionId) {
+      localStorage.setItem(SESSION_ID_KEY, sessionId);
+      sessionStorage.removeItem(LOGGED_OUT_KEY);
+    } else {
+      localStorage.removeItem(SESSION_ID_KEY);
+    }
+  } catch {
+    // Ignore storage unavailability
+  }
+}
+
+function getOperatorHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const sessionId = getStoredOperatorSessionId();
+  if (sessionId) {
+    headers["x-session-id"] = sessionId;
+  }
+  return headers;
+}
+
 export async function fetchAuditLogs(limit: number = 50, offset: number = 0): Promise<AuditEventItem[]> {
+  const headers = getOperatorHeaders();
   const res = await fetch(`/api/admin/audit-logs?limit=${limit}&offset=${offset}`, {
     method: "GET",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers,
   });
+
+  // Track session ID header if returned by server
+  const returnedSessionId = res.headers.get("x-session-id");
+  if (returnedSessionId) {
+    setStoredOperatorSessionId(returnedSessionId);
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -190,8 +232,13 @@ export async function runDeploymentReadiness(): Promise<ReadinessSuiteItem> {
   const res = await fetch("/api/admin/readiness/run", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: getOperatorHeaders(),
   });
+
+  const returnedSessionId = res.headers.get("x-session-id");
+  if (returnedSessionId) {
+    setStoredOperatorSessionId(returnedSessionId);
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -206,15 +253,23 @@ export async function fetchLatestReadiness(): Promise<ReadinessSuiteItem | null>
   const res = await fetch("/api/admin/readiness/latest", {
     method: "GET",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: getOperatorHeaders(),
   });
+
+  const returnedSessionId = res.headers.get("x-session-id");
+  if (returnedSessionId) {
+    setStoredOperatorSessionId(returnedSessionId);
+  }
 
   if (!res.ok) return null;
   const data = await res.json();
   return data.suite || null;
 }
 
-export async function loginOperator(username: string, password: string): Promise<{ success: boolean; user?: string; error?: string }> {
+export async function loginOperator(
+  username: string,
+  password: string
+): Promise<{ success: boolean; user?: string; sessionId?: string; error?: string }> {
   const res = await fetch("/api/auth/login", {
     method: "POST",
     credentials: "include",
@@ -227,26 +282,42 @@ export async function loginOperator(username: string, password: string): Promise
     throw new Error(err.error || "Login failed");
   }
 
-  return await res.json();
+  const data = await res.json();
+  if (data.sessionId) {
+    setStoredOperatorSessionId(data.sessionId);
+  }
+  return data;
 }
 
 export async function logoutOperator(): Promise<void> {
+  try {
+    sessionStorage.setItem(LOGGED_OUT_KEY, "true");
+  } catch {}
   await fetch("/api/auth/logout", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: getOperatorHeaders(),
   });
+  setStoredOperatorSessionId(null);
 }
 
-export async function fetchOperatorSession(): Promise<{ authenticated: boolean; user?: string } | null> {
+export async function fetchOperatorSession(): Promise<{ authenticated: boolean; user?: string; sessionId?: string } | null> {
   try {
+    const headers = getOperatorHeaders();
+    if (sessionStorage.getItem(LOGGED_OUT_KEY) === "true") {
+      headers["x-logged-out"] = "true";
+    }
     const res = await fetch("/api/auth/session", {
       method: "GET",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers,
     });
     if (!res.ok) return { authenticated: false };
-    return await res.json();
+    const data = await res.json();
+    if (data.authenticated && data.sessionId) {
+      setStoredOperatorSessionId(data.sessionId);
+    }
+    return data;
   } catch {
     return { authenticated: false };
   }
@@ -265,4 +336,24 @@ export async function fetchSubsystemReadiness(): Promise<import("../types").Subs
     return null;
   }
 }
+
+export async function inspectLiveTarget(params: {
+  targetUrl?: string;
+  rawHtml?: string;
+}): Promise<import("../types").LiveInspectionReport> {
+  const res = await fetch("/api/inspect/live-target", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Live target inspection failed (${res.status})`);
+  }
+
+  return await res.json();
+}
+
 

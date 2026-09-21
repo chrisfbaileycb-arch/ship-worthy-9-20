@@ -16,8 +16,6 @@ import {
 interface NavbarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
-  onOpenUpgradeModal?: () => void;
-  currentTier?: string;
   securityClearance?: SecurityClearance | null;
   onOpenDefenseModal?: () => void;
   onOpenDefenseGate?: () => void;

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { AppRegistryItem, AppAuditReport, PillarReport } from "../types";
+import { buildDefaultCadence } from "../utils/governance";
 import {
   Layers,
   Globe,
@@ -385,14 +386,19 @@ export const RegistryView: React.FC<RegistryViewProps> = ({
     e.preventDefault();
     if (!newName.trim()) return;
 
+    const today = new Date().toISOString().split("T")[0];
     const newApp: AppRegistryItem = {
       id: `app-${Date.now()}`,
       name: newName.trim(),
-      description: newDesc.trim() || "Managed 1WithOut PWA Application",
+      description: newDesc.trim() || "Managed Autonomous PWA Application",
+      organization: "Independent Workspace",
+      owner: "Lead Architect",
+      projectScope: "master_core_ip",
+      lifecyclePhase: newEnv === "Production" ? "deployed_monitored" : newEnv === "Staging" ? "ready_for_deployment" : "in_development",
       liveUrl: newLiveUrl.trim() || undefined,
       repoUrl: newRepoUrl.trim() || undefined,
       environment: newEnv,
-      launchDate: new Date().toISOString().split("T")[0],
+      launchDate: today,
       readinessScore: 92,
       status: "Live & Healthy",
       daysSinceLaunch: 0,
@@ -401,6 +407,7 @@ export const RegistryView: React.FC<RegistryViewProps> = ({
         day90Completed: false,
         day180Completed: false,
       },
+      cadenceScheduleDetailed: buildDefaultCadence(today),
       activeAlertsCount: 0,
     };
 

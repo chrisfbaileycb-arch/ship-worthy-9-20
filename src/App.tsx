@@ -6,6 +6,7 @@ import {
   SecurityClearance,
 } from "./types";
 import { INITIAL_REGISTRY_APPS, SAMPLE_SCENARIOS } from "./data/samples";
+import { buildDefaultCadence } from "./utils/governance";
 import { Navbar } from "./components/Navbar";
 import { OverviewView } from "./components/OverviewView";
 import { DiscernView } from "./components/DiscernView";
@@ -22,7 +23,6 @@ import { ShieldCheck, Cpu, SlidersHorizontal } from "lucide-react";
 export function App() {
   // Active Tab defaults to 'overview' per verification pipeline
   const [activeTab, setActiveTab] = useState<TabType>("overview");
-  const [currentTier, setCurrentTier] = useState<string>("free");
 
   // Sub-mode for QA Matrix: 6-Pillar Pre-Flight Studio vs Shipworthy Isolated Sandbox Runner
   const [qaMatrixMode, setQaMatrixMode] = useState<"studio" | "runner">("studio");
@@ -54,7 +54,20 @@ export function App() {
     const saved = localStorage.getItem("1without_apps_registry");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item: any) => ({
+            ...item,
+            lifecyclePhase:
+              item.lifecyclePhase ||
+              (item.environment === "Production"
+                ? "deployed_monitored"
+                : item.environment === "Staging"
+                ? "ready_for_deployment"
+                : "in_development"),
+            projectScope: item.projectScope || "master_core_ip",
+          }));
+        }
       } catch (e) {}
     }
     return INITIAL_REGISTRY_APPS;
@@ -90,6 +103,10 @@ export function App() {
     setRegistryApps((prev) => [app, ...prev]);
   };
 
+  const handleUpdateApp = (updatedApp: AppRegistryItem) => {
+    setRegistryApps((prev) => prev.map((a) => (a.id === updatedApp.id ? updatedApp : a)));
+  };
+
   const handleRemoveApp = (appId: string) => {
     setRegistryApps((prev) => prev.filter((a) => a.id !== appId));
   };
@@ -121,8 +138,6 @@ export function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenUpgradeModal={() => setActiveTab("overview")}
-        currentTier={currentTier}
         securityClearance={securityClearance}
         onOpenDefenseGate={() => setActiveTab("defense-gate")}
       />
@@ -144,10 +159,12 @@ export function App() {
               }
             }}
             onSelectSample={handleSelectSample}
-            onSelectTier={(tierId) => {
-              setCurrentTier(tierId);
-            }}
             securityClearance={securityClearance}
+            apps={registryApps}
+            onAddApp={handleAddApp}
+            onUpdateApp={handleUpdateApp}
+            onRemoveApp={handleRemoveApp}
+            onSelectAppForAudit={handleSelectAppForAudit}
           />
         )}
 
@@ -219,14 +236,19 @@ export function App() {
                 initialStackDesc={auditInitialStackDesc}
                 onSendToSkillBuilder={handleSendToSkillBuilder}
                 onSaveToRegistry={(audit) => {
+                  const today = new Date().toISOString().split("T")[0];
                   const newApp: AppRegistryItem = {
                     id: `app-${Date.now()}`,
                     name: audit.appName,
-                    description: audit.stackDescription || "Audited PWA Application",
+                    description: audit.stackDescription || "Audited Autonomous Application",
+                    organization: "Autonomous Workspace",
+                    owner: "Lead Architect",
+                    projectScope: "master_core_ip",
+                    lifecyclePhase: audit.launchReadinessScore >= 90 ? "deployed_monitored" : "ready_for_deployment",
                     liveUrl: audit.liveUrl,
                     repoUrl: audit.repoUrl,
                     environment: "Production",
-                    launchDate: new Date().toISOString().split("T")[0],
+                    launchDate: today,
                     readinessScore: audit.launchReadinessScore,
                     status: audit.launchReadinessScore >= 90 ? "Live & Healthy" : "Pre-Flight Pending",
                     daysSinceLaunch: 0,
@@ -235,6 +257,7 @@ export function App() {
                       day90Completed: false,
                       day180Completed: false,
                     },
+                    cadenceScheduleDetailed: buildDefaultCadence(today),
                     lastAuditId: audit.id,
                     activeAlertsCount: audit.launchReadinessScore < 90 ? 1 : 0,
                   };
