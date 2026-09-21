@@ -12,7 +12,7 @@ export async function safeAuditFetch<T>(
 ): Promise<SafeFetchResponse<T>> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12-second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second rapid timeout for instant fallback
 
     const response = await fetch(url, {
       ...options,

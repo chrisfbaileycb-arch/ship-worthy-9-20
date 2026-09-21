@@ -1063,7 +1063,7 @@ test.describe('A11y & ARIA Automated Matrix', () => {
                 className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                   axeScanTarget === "live_dom"
                     ? "bg-white text-teal-900 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    : "text-slate-700 hover:text-slate-950 font-medium"
                 }`}
               >
                 Live UI Workspace DOM
@@ -1075,7 +1075,7 @@ test.describe('A11y & ARIA Automated Matrix', () => {
                 className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                   axeScanTarget === "custom_snippet"
                     ? "bg-white text-teal-900 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    : "text-slate-700 hover:text-slate-950 font-medium"
                 }`}
               >
                 Custom HTML/PWA Snippet

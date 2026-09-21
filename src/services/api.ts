@@ -502,12 +502,18 @@ export async function runPreFlightScan(
   options?: FetchScanOptions
 ): Promise<AppAuditReport> {
   const allowFallback = options?.offlineHeuristicFallback !== false;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second rapid timeout
+
   try {
     const res = await fetch("/api/audit/scan", {
       method: "POST",
+      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ appName, stackDescription, liveUrl, repoUrl, codeSnippets }),
     });
+
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
       if (res.status === 502 || res.status === 503 || res.status === 504) {
@@ -527,7 +533,8 @@ export async function runPreFlightScan(
       createdAt: new Date().toISOString(),
     };
   } catch (err: any) {
-    if (isNetworkOrAvailabilityError(err)) {
+    clearTimeout(timeoutId);
+    if (isNetworkOrAvailabilityError(err) || err.name === "AbortError") {
       if (allowFallback) {
         return runOfflineHeuristicPreFlightScan(appName, stackDescription, liveUrl, repoUrl, codeSnippets);
       }

@@ -600,12 +600,16 @@ export async function provisionSandbox(
   options?: { offlineHeuristicFallback?: boolean }
 ): Promise<{ sandbox: ContainerHealthTelemetry; diagnostic?: string; isOfflineFallback?: boolean }> {
   const allowFallback = options?.offlineHeuristicFallback !== false;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second rapid timeout
   try {
     const res = await fetch("/api/shipworthy/sandbox/provision", {
       method: "POST",
+      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
     });
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
       throw new Error(`Provision failed with status ${res.status}`);
@@ -613,7 +617,8 @@ export async function provisionSandbox(
     const data = await res.json();
     return { sandbox: data.sandbox };
   } catch (err: any) {
-    if (isNetworkOrAvailabilityError(err) || allowFallback) {
+    clearTimeout(timeoutId);
+    if (isNetworkOrAvailabilityError(err) || err.name === "AbortError" || allowFallback) {
       return {
         sandbox: createOfflineHeuristicSandbox(config),
         diagnostic: BACKEND_UNAVAILABLE_DIAGNOSTIC,
@@ -634,12 +639,16 @@ export async function runPersonaInSandbox(
   isOfflineFallback?: boolean;
 }> {
   const allowFallback = options?.offlineHeuristicFallback !== false;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second rapid timeout
   try {
     const res = await fetch("/api/shipworthy/persona/run", {
       method: "POST",
+      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ containerId, persona }),
     });
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
       throw new Error(`Persona run failed with status ${res.status}`);
@@ -647,7 +656,8 @@ export async function runPersonaInSandbox(
     const data = await res.json();
     return { results: data.results };
   } catch (err: any) {
-    if (isNetworkOrAvailabilityError(err) || allowFallback) {
+    clearTimeout(timeoutId);
+    if (isNetworkOrAvailabilityError(err) || err.name === "AbortError" || allowFallback) {
       return {
         results: createOfflineHeuristicPersonaResults(),
         diagnostic: BACKEND_UNAVAILABLE_DIAGNOSTIC,
@@ -669,12 +679,16 @@ export async function generateShipworthyFlightReport(
   options?: { offlineHeuristicFallback?: boolean }
 ): Promise<{ report: ShipworthyFlightReport; diagnostic?: string; isOfflineFallback?: boolean }> {
   const allowFallback = options?.offlineHeuristicFallback !== false;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second rapid timeout
   try {
     const res = await fetch("/api/shipworthy/report/generate", {
       method: "POST",
+      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
     });
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
       throw new Error(`Report generation failed with status ${res.status}`);
@@ -687,7 +701,8 @@ export async function generateShipworthyFlightReport(
     rep.dockerSandboxSpec = generateDockerfile(config);
     return { report: rep };
   } catch (err: any) {
-    if (isNetworkOrAvailabilityError(err) || allowFallback) {
+    clearTimeout(timeoutId);
+    if (isNetworkOrAvailabilityError(err) || err.name === "AbortError" || allowFallback) {
       const rep = createOfflineHeuristicFlightReport(params, config);
       return {
         report: rep,
