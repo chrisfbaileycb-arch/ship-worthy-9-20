@@ -443,7 +443,7 @@ export const DiscernView: React.FC<DiscernViewProps> = ({
 
       {/* Audit Report Results View */}
       {report && (
-        <div id="discernment-report-output" className="space-y-8 animate-in fade-in duration-300">
+        <div id="discernment-report-output" className="space-y-8 animate-in fade-in duration-150">
           {/* Summary & Scorecard Banner */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="space-y-2">

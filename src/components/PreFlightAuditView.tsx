@@ -240,9 +240,13 @@ export const PreFlightAuditView: React.FC<PreFlightAuditViewProps> = ({
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current);
         }
-        setScanProgress(100);
-        setCurrentPhaseIndex(PILLAR_PHASES.length - 1);
-        setReport(targetReport);
+        // Smooth linear progression: 90% -> 95% -> 100% within 400ms
+        setScanProgress(95);
+        setTimeout(() => {
+          setScanProgress(100);
+          setCurrentPhaseIndex(PILLAR_PHASES.length - 1);
+          setReport(targetReport);
+        }, 200);
       } catch (err: any) {
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current);
@@ -639,15 +643,18 @@ test.describe('A11y & ARIA Automated Matrix', () => {
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
       }
-      setScanProgress(100);
-      setCurrentPhaseIndex(PILLAR_PHASES.length - 1);
-
-      // Short delay for visual smoothness at 100%
+      // Smooth linear transition: 90% -> 95% -> 100% within 400ms without freeze
+      setScanProgress(95);
       setTimeout(() => {
-        setReport(result);
-        saveAuditToHistory(result);
-        setIsLoading(false);
-      }, 400);
+        setScanProgress(100);
+        setCurrentPhaseIndex(PILLAR_PHASES.length - 1);
+
+        setTimeout(() => {
+          setReport(result);
+          saveAuditToHistory(result);
+          setIsLoading(false);
+        }, 200);
+      }, 200);
     } catch (err: any) {
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
@@ -718,18 +725,18 @@ test.describe('A11y & ARIA Automated Matrix', () => {
   });
 
   return (
-    <div id="preflight-audit-view" className="space-y-8 py-8 max-w-6xl mx-auto px-4 sm:px-6 pb-24 text-slate-900">
+    <div id="preflight-audit-view" className="space-y-8 py-8 max-w-6xl mx-auto px-4 sm:px-6 pb-24 text-slate-100">
       {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-6 border-b border-slate-200">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-6 border-b border-slate-700/80">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold uppercase tracking-wider mb-2">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Launch Certification & QA Framework</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-semibold uppercase tracking-wider mb-2">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-emerald-300">Launch Certification & QA Framework</span>
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-3xl font-extrabold text-slate-50 font-bold tracking-tight">
             6-Pillar Production Launch Matrix
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-2xl">
+          <p className="text-xs sm:text-sm text-slate-200 mt-1 max-w-2xl leading-relaxed">
             Empirical verification across Security, Cloud Ingress, Billing/Legal, Marketing Copy, Interface QA & Automated Axe-Core Accessibility.
           </p>
         </div>
@@ -741,23 +748,23 @@ test.describe('A11y & ARIA Automated Matrix', () => {
             type="button"
             onClick={handleExportAuditReport}
             disabled={isExportingPdf || isLoading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs border border-slate-300 hover:border-slate-400 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-100 font-bold text-xs border border-slate-700 hover:border-slate-600 transition-all cursor-pointer shadow-xs disabled:opacity-50"
             title="Generate and download a professional PDF summary of the 6-pillar findings"
           >
             {isExportingPdf ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
-                <span>Exporting PDF...</span>
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+                <span className="text-slate-100">Exporting PDF...</span>
               </>
             ) : pdfSuccessToast ? (
               <>
-                <Check className="w-4 h-4 text-emerald-600" />
-                <span className="text-emerald-700">Audit Report Downloaded!</span>
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span className="text-emerald-300">Audit Report Downloaded!</span>
               </>
             ) : (
               <>
-                <Download className="w-4 h-4 text-emerald-600" />
-                <span>Export Audit Report (PDF)</span>
+                <Download className="w-4 h-4 text-emerald-400" />
+                <span className="text-slate-100">Export Audit Report (PDF)</span>
               </>
             )}
           </button>
@@ -768,11 +775,11 @@ test.describe('A11y & ARIA Automated Matrix', () => {
             type="button"
             onClick={handleOpenEmailReport}
             disabled={isLoading || isExportingPdf}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs border border-slate-300 hover:border-slate-400 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-100 font-bold text-xs border border-slate-700 hover:border-slate-600 transition-all cursor-pointer shadow-xs disabled:opacity-50"
             title="Email findings & executive verification dossier to project lead"
           >
-            <Mail className="w-4 h-4 text-emerald-600" />
-            <span>Email Report</span>
+            <Mail className="w-4 h-4 text-emerald-400" />
+            <span className="text-slate-100">Email Report</span>
           </button>
 
           {/* COMPARE AUDITS BUTTON */}
@@ -781,11 +788,11 @@ test.describe('A11y & ARIA Automated Matrix', () => {
             type="button"
             onClick={handleOpenComparison}
             disabled={isLoading || isExportingPdf}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs border border-slate-300 hover:border-slate-400 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-100 font-bold text-xs border border-slate-700 hover:border-slate-600 transition-all cursor-pointer shadow-xs disabled:opacity-50"
             title="Compare current audit results with a previous audit session side-by-side"
           >
-            <GitCompare className="w-4 h-4 text-emerald-600" />
-            <span>Compare Audits</span>
+            <GitCompare className="w-4 h-4 text-emerald-400" />
+            <span className="text-slate-100">Compare Audits</span>
           </button>
 
           {/* RUN 6-PILLAR SCAN BUTTON */}
@@ -794,7 +801,7 @@ test.describe('A11y & ARIA Automated Matrix', () => {
             type="button"
             onClick={handleRunScan}
             disabled={isLoading || isExportingPdf}
-            className="flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-600/20 disabled:opacity-50 transition-all cursor-pointer"
+            className="flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20 disabled:opacity-50 transition-all cursor-pointer"
           >
             {isLoading ? (
               <>
@@ -805,12 +812,12 @@ test.describe('A11y & ARIA Automated Matrix', () => {
                   showPercentageText={false}
                   colorVariant="emerald"
                 />
-                <span>Analyzing 6 Pillars ({Math.round(scanProgress)}%)...</span>
+                <span className="text-slate-950 font-bold">Analyzing 6 Pillars ({Math.round(scanProgress)}%)...</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" />
-                <span>Run 6-Pillar Scan</span>
+                <Sparkles className="w-4 h-4 text-slate-950" />
+                <span className="text-slate-950 font-bold">Run 6-Pillar Scan</span>
               </>
             )}
           </button>
@@ -941,15 +948,15 @@ test.describe('A11y & ARIA Automated Matrix', () => {
       )}
 
       {/* Target Application Metadata & Config */}
-      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm space-y-5">
-        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-          <Sliders className="w-4 h-4 text-emerald-600" />
-          Target App Architecture & Endpoints
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
+        <h2 className="text-xs font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
+          <Sliders className="w-4 h-4 text-emerald-400" />
+          <span>Target App Architecture & Endpoints</span>
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label htmlFor="audit-app-name-input" className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label htmlFor="audit-app-name-input" className="block text-xs font-bold text-slate-200 uppercase mb-1">
               Application Name
             </label>
             <input
@@ -960,12 +967,12 @@ test.describe('A11y & ARIA Automated Matrix', () => {
               value={appName}
               onChange={(e) => setAppName(e.target.value)}
               placeholder="e.g. 1WithOut Master PWA"
-              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:bg-white outline-none"
+              className="w-full bg-slate-950 border border-slate-700 text-slate-100 text-xs rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none placeholder:text-slate-500"
             />
           </div>
 
           <div>
-            <label htmlFor="audit-live-url-input" className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label htmlFor="audit-live-url-input" className="block text-xs font-bold text-slate-200 uppercase mb-1">
               Live Preview / Production URL
             </label>
             <div className="relative">
@@ -977,14 +984,14 @@ test.describe('A11y & ARIA Automated Matrix', () => {
                 value={liveUrl}
                 onChange={(e) => setLiveUrl(e.target.value)}
                 placeholder="https://your-app.com"
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl pl-8 pr-3 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:bg-white outline-none font-mono"
+                className="w-full bg-slate-950 border border-slate-700 text-slate-100 text-xs rounded-xl pl-8 pr-3 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none font-mono placeholder:text-slate-500"
               />
               <Globe className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
             </div>
           </div>
 
           <div>
-            <label htmlFor="audit-repo-url-input" className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label htmlFor="audit-repo-url-input" className="block text-xs font-bold text-slate-200 uppercase mb-1">
               Repository URL (GitHub / GitLab)
             </label>
             <input
@@ -995,13 +1002,13 @@ test.describe('A11y & ARIA Automated Matrix', () => {
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
               placeholder="https://github.com/user/repo"
-              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:bg-white outline-none font-mono"
+              className="w-full bg-slate-950 border border-slate-700 text-slate-100 text-xs rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none font-mono placeholder:text-slate-500"
             />
           </div>
         </div>
 
         <div>
-          <label htmlFor="audit-stack-desc-input" className="block text-xs font-bold text-slate-700 uppercase mb-1">
+          <label htmlFor="audit-stack-desc-input" className="block text-xs font-bold text-slate-200 uppercase mb-1">
             Stack Description & Environment Architecture
           </label>
           <input
@@ -1011,12 +1018,12 @@ test.describe('A11y & ARIA Automated Matrix', () => {
             aria-label="Audit Stack Description"
             value={stackDescription}
             onChange={(e) => setStackDescription(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:bg-white outline-none"
+            className="w-full bg-slate-950 border border-slate-700 text-slate-100 text-xs rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none placeholder:text-slate-500"
           />
         </div>
 
         {errorMsg && (
-          <p className="text-xs text-rose-600 font-bold bg-rose-50 p-3 rounded-xl border border-rose-200">
+          <p className="text-xs text-rose-300 font-bold bg-rose-950/60 p-3 rounded-xl border border-rose-700">
             {errorMsg}
           </p>
         )}
