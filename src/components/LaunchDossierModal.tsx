@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { AppRegistryItem } from "../types";
 import { generateDossierSha256 } from "../utils/governance";
+import { SecondaryActionButton } from "./ui/SecondaryActionButton";
 import {
   ShieldCheck,
   Printer,
@@ -230,13 +231,11 @@ export const LaunchDossierModal: React.FC<LaunchDossierModalProps> = ({ app, onC
 
         {/* Modal Footer */}
         <div className="flex items-center justify-end gap-3 pt-2 print:hidden shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+          <SecondaryActionButton
+            onCancelOrBack={onClose}
           >
-            Close
-          </button>
+            Close / Back
+          </SecondaryActionButton>
         </div>
       </div>
     </div>

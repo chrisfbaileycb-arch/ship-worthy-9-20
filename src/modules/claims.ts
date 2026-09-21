@@ -252,47 +252,136 @@ export function assembleClaims(
 
 // ─── Calling the Edge Function ───────────────────────────────────────────────
 
+export const BACKEND_UNAVAILABLE_DIAGNOSTIC =
+  'Backend Service Unavailable (Check Supabase edge function deployment or CORS headers)';
+
 export class ClaimsUnavailableError extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
+  readonly diagnostic: string;
+  readonly isOfflineFallback?: boolean;
+
+  constructor(code: string, message: string, diagnostic = BACKEND_UNAVAILABLE_DIAGNOSTIC) {
     super(message);
     this.name = 'ClaimsUnavailableError';
     this.code = code;
+    this.diagnostic = diagnostic;
   }
+}
+
+export interface AnalyzeClaimsOptions {
+  /** If true (default), falls back to offline client-side heuristic analysis when backend is unreachable */
+  offlineHeuristicFallback?: boolean;
+}
+
+/**
+ * Executes an offline client-side heuristic baseline pass when edge functions
+ * are unreachable or unconfigured. Returns valid ClaimsBuildResult with diagnostic status.
+ */
+export function runOfflineHeuristicClaimsAnalysis(source: string): ClaimsBuildResult & {
+  diagnostic: string;
+  isOfflineFallback: true;
+} {
+  const lines = source.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const heuristicQuotes: Array<{
+    quote: string;
+    type: string;
+    severity?: string;
+    why: string;
+    substantiation?: string;
+    rewrite?: string;
+  }> = [];
+
+  for (const line of lines) {
+    if (/\b(?:guarantee|guaranteed|100%|always|never|completely unhackable|risk-free)\b/i.test(line)) {
+      heuristicQuotes.push({
+        quote: line.length > 80 ? line.slice(0, 77) + '...' : line,
+        type: 'guarantee',
+        severity: 'warn',
+        why: 'Unqualified guarantee or absolute claim identified in offline heuristic pass.',
+        substantiation: 'Document empirical qualifications and boundary criteria.',
+      });
+    } else if (/\b(?:best|fastest|number one|#1|leading|unmatched)\b/i.test(line)) {
+      heuristicQuotes.push({
+        quote: line.length > 80 ? line.slice(0, 77) + '...' : line,
+        type: 'efficacy',
+        severity: 'info',
+        why: 'Superlative claim requires documented third-party benchmark verification.',
+      });
+    }
+  }
+
+  const verified = buildVerifiedFindings(source, heuristicQuotes);
+  return {
+    ...verified,
+    diagnostic: BACKEND_UNAVAILABLE_DIAGNOSTIC,
+    isOfflineFallback: true,
+  };
 }
 
 /**
  * Run the model pass. Requires sign-in — the endpoint spends money.
  *
- * Returns the verified findings plus how many quotes were discarded, so the UI
- * can be honest about it rather than quietly presenting a filtered list.
+ * Wrapped in structured try/catch blocks. If the backend is unreachable or returns
+ * a network error, returns a diagnostic status in offline client-side heuristic mode
+ * so the user still receives a baseline evaluation.
  */
-export async function analyzeClaims(source: string): Promise<ClaimsBuildResult> {
+export async function analyzeClaims(
+  source: string,
+  options?: AnalyzeClaimsOptions
+): Promise<ClaimsBuildResult & { diagnostic?: string; isOfflineFallback?: boolean }> {
+  const allowFallback = options?.offlineHeuristicFallback !== false;
+
   const supabase = getSupabase();
   if (!supabase) {
+    if (allowFallback) {
+      return runOfflineHeuristicClaimsAnalysis(source);
+    }
     throw new ClaimsUnavailableError(
       'not_configured',
-      'Claims analysis needs a backend. Local claim checks still ran.',
+      `${BACKEND_UNAVAILABLE_DIAGNOSTIC}. Local claim checks still ran.`,
+      BACKEND_UNAVAILABLE_DIAGNOSTIC
     );
   }
 
-  const { data, error } = await supabase.functions.invoke<ClaimsResponse>('claims-analyze', {
-    body: { text: source.trim() },
-  });
+  try {
+    const { data, error } = await supabase.functions.invoke<ClaimsResponse>('claims-analyze', {
+      body: { text: source.trim() },
+    });
 
-  if (error) {
+    if (error) {
+      if (allowFallback) {
+        return runOfflineHeuristicClaimsAnalysis(source);
+      }
+      throw new ClaimsUnavailableError(
+        'provider_unavailable',
+        `${BACKEND_UNAVAILABLE_DIAGNOSTIC}. Local claim checks still ran.`,
+        BACKEND_UNAVAILABLE_DIAGNOSTIC
+      );
+    }
+    if (!data || data.ok !== true) {
+      const failure = data as ClaimsFailure | null | undefined;
+      if (allowFallback) {
+        return runOfflineHeuristicClaimsAnalysis(source);
+      }
+      throw new ClaimsUnavailableError(
+        failure?.code ?? 'malformed_response',
+        `${BACKEND_UNAVAILABLE_DIAGNOSTIC}: ${failure?.message ?? 'The claims analysis could not be completed.'}`,
+        BACKEND_UNAVAILABLE_DIAGNOSTIC
+      );
+    }
+
+    return buildVerifiedFindings(source, data.claims);
+  } catch (err: any) {
+    if (err instanceof ClaimsUnavailableError) {
+      throw err;
+    }
+    if (allowFallback) {
+      return runOfflineHeuristicClaimsAnalysis(source);
+    }
     throw new ClaimsUnavailableError(
-      'provider_unavailable',
-      'Could not reach the claims analysis service. Local claim checks still ran.',
+      'network_error',
+      `${BACKEND_UNAVAILABLE_DIAGNOSTIC}. Local claim checks still ran.`,
+      BACKEND_UNAVAILABLE_DIAGNOSTIC
     );
   }
-  if (!data || data.ok !== true) {
-    const failure = data as ClaimsFailure | null | undefined;
-    throw new ClaimsUnavailableError(
-      failure?.code ?? 'malformed_response',
-      failure?.message ?? 'The claims analysis could not be completed.',
-    );
-  }
-
-  return buildVerifiedFindings(source, data.claims);
 }

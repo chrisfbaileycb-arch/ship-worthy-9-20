@@ -16,6 +16,11 @@ import {
   generatePythonTestcontainersScript,
   generatePlaywrightTypeScriptScript,
   generateFlightReportMarkdown,
+  provisionSandbox,
+  runPersonaInSandbox,
+  generateShipworthyFlightReport,
+  teardownSandbox,
+  BACKEND_UNAVAILABLE_DIAGNOSTIC,
 } from "../services/shipworthyEngine";
 import {
   Shield,
@@ -97,13 +102,11 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
 
     try {
       // 1. Provision Sandbox API
-      const provRes = await fetch("/api/shipworthy/sandbox/provision", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
-      });
-      const provData = await provRes.json();
+      const provData = await provisionSandbox(config);
       const sandbox = provData.sandbox;
+      if (provData.diagnostic) {
+        addLog("DIAGNOSTIC", `${provData.diagnostic} (Running in offline client-side heuristic mode)`);
+      }
       setContainerHealth(sandbox);
 
       addLog("DOCKER", `Sandbox container spawned [${sandbox.containerId}] on ephemeral port :${sandbox.ephemeralPort}`);
@@ -120,12 +123,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
       setCurrentStepName("Executing Persona A (Happy Path - Standard E2E Journey)...");
       addLog("PLAYWRIGHT", "Starting headless Chromium instance for Persona A: Happy Path...");
 
-      const personaRes = await fetch("/api/shipworthy/persona/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ containerId: sandbox.containerId, persona: "ALL" }),
-      });
-      const personaData = await personaRes.json();
+      const personaData = await runPersonaInSandbox(sandbox.containerId, "ALL");
       const results = personaData.results;
 
       setExecutionProgress(60);
@@ -147,35 +145,20 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
       setExecutionProgress(92);
       setCurrentStepName("Synthesizing Shipworthy Flight Report & Certification Dossier...");
 
-      const reportRes = await fetch("/api/shipworthy/report/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoTarget: config.repoUrl,
-          commitSha: "c8f92a1",
-          containerHealth: sandbox,
-          personaResults: results,
-        }),
-      });
-      const reportData = await reportRes.json();
+      const reportData = await generateShipworthyFlightReport({
+        repoTarget: config.repoUrl,
+        commitSha: "c8f92a1",
+        containerHealth: sandbox,
+        personaResults: results,
+      }, config);
       const rep = reportData.report;
-
-      // Attach complete markdown and code scripts
-      rep.flightReportMarkdown = generateFlightReportMarkdown(rep);
-      rep.playwrightScriptTs = generatePlaywrightTypeScriptScript(config);
-      rep.playwrightScriptPy = generatePythonTestcontainersScript(config);
-      rep.dockerSandboxSpec = generateDockerfile(config);
 
       setFlightReport(rep);
 
       // 4. Automatic Teardown & Destruction
       setExecutionProgress(98);
       setCurrentStepName("Executing Complete Container Sandbox Teardown...");
-      await fetch("/api/shipworthy/sandbox/teardown", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ containerId: sandbox.containerId }),
-      });
+      await teardownSandbox(sandbox.containerId);
 
       addLog("TEARDOWN", `Container [${sandbox.containerId}] destroyed. Ports released. Memory scrubbed cleanly.`);
       setContainerHealth((prev) => (prev ? { ...prev, teardownStatus: "DESTROYED_CLEAN" } : null));
@@ -195,11 +178,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
     if (!containerHealth) return;
     addLog("TEARDOWN", `Initiating manual teardown of sandbox container [${containerHealth.containerId}]...`);
     try {
-      await fetch("/api/shipworthy/sandbox/teardown", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ containerId: containerHealth.containerId }),
-      });
+      await teardownSandbox(containerHealth.containerId);
       setContainerHealth((prev) => (prev ? { ...prev, teardownStatus: "DESTROYED_CLEAN" } : null));
       addLog("TEARDOWN", `Container cleanly destroyed.`);
     } catch (e: any) {

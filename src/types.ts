@@ -115,6 +115,8 @@ export interface ContainerHealthTelemetry {
   uptimeSeconds: number;
   isHealthy: boolean;
   teardownStatus: "ACTIVE" | "DESTROYED_CLEAN" | "TEARDOWN_FAILED";
+  diagnostic?: string;
+  isOfflineFallback?: boolean;
 }
 
 export type PersonaType =
@@ -204,6 +206,8 @@ export interface ShipworthyFlightReport {
   playwrightScriptTs: string;
   playwrightScriptPy: string;
   dockerSandboxSpec: string;
+  diagnostic?: string;
+  isOfflineFallback?: boolean;
 }
 
 export type IntakeModality = "text" | "video_url" | "webpage_url" | "document_pdf" | "pwa_source" | "book_chapter";
@@ -249,6 +253,8 @@ export interface DiscernmentReport {
   claims: ClaimEvaluation[];
   sandboxTestPlan: SandboxTestPlan;
   createdAt: string;
+  diagnostic?: string;
+  isOfflineFallback?: boolean;
 }
 
 export type ActionType =
@@ -297,6 +303,8 @@ export interface AgentSkillPackage {
   toolDefinitionsJson: string;
   pwaManifestJson?: string;
   createdAt: string;
+  diagnostic?: string;
+  isOfflineFallback?: boolean;
 }
 
 export type PillarId = "security" | "infra" | "legal" | "claims" | "qa" | "maintenance";
@@ -369,6 +377,8 @@ export interface AppAuditReport {
   pillars: PillarReport[];
   cadenceSchedule: CadenceSchedule;
   createdAt: string;
+  diagnostic?: string;
+  isOfflineFallback?: boolean;
 }
 
 export type LifecyclePhase = "in_development" | "ready_for_deployment" | "deployed_monitored";
@@ -403,19 +413,28 @@ export interface CadenceScheduleDetailed {
 export interface LiveHeaderItem {
   name: string;
   value: string;
-  status: "PASSED" | "WARNING" | "MISSING";
+  status: "PASSED" | "WARNING" | "MISSING" | "SECURE";
   description: string;
-  remediation: string;
+  remediation?: string;
 }
 
 export interface LiveDomInspection {
-  framework: string;
-  pwaManifestDetected: boolean;
+  framework?: string;
+  pwaManifestDetected?: boolean;
   manifestUrl?: string;
-  serviceWorkerDetected: boolean;
-  metaTagsCount: number;
-  scriptsCount: number;
-  externalDependencies: string[];
+  serviceWorkerDetected?: boolean;
+  metaTagsCount?: number;
+  scriptsCount?: number;
+  externalDependencies?: string[];
+  title?: string;
+  hasViewportMeta?: boolean;
+  hasManifestLink?: boolean;
+  hasThemeColor?: boolean;
+  scriptCount?: number;
+  inlineScriptCount?: number;
+  hasDangerousEval?: boolean;
+  formCount?: number;
+  hasInsecureForms?: boolean;
 }
 
 export interface LiveInspectionReport {
@@ -426,6 +445,8 @@ export interface LiveInspectionReport {
   headers: LiveHeaderItem[];
   domInspection: LiveDomInspection;
   recommendations: string[];
+  diagnostic?: string;
+  isOfflineFallback?: boolean;
 }
 
 export interface InDevelopmentAudit {
@@ -501,6 +522,8 @@ export interface DefenseScanResult {
   detectedSnippets: string[];
   allowlistedProjectEligible: boolean; // e.g. legitimate Bankruptcy Restructuring or Corporate Archival
   suggestedAction: string;
+  diagnostic?: string;
+  isOfflineFallback?: boolean;
 }
 
 export interface SecurityClearance {

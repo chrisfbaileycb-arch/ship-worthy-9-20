@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { SecondaryActionButton } from "./ui/SecondaryActionButton";
 import {
   ShieldCheck,
   Zap,
@@ -312,6 +313,15 @@ export const CommercialLicenseModal: React.FC<CommercialLicenseModalProps> = ({
           <p className="text-[10px] text-slate-500">
             Dispatches automated alerts 14 days prior to semi-annual pass renewal and upon 30/60/90/180-day operational review deadlines. No unsolicited marketing emails.
           </p>
+        </div>
+
+        {/* Modal Action Bar with WCAG AA Secondary Action */}
+        <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+          <SecondaryActionButton
+            onCancelOrBack={onClose}
+          >
+            Cancel / Back
+          </SecondaryActionButton>
         </div>
       </div>
     </div>

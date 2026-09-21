@@ -213,3 +213,28 @@ describe('module assembly', () => {
     expect(r.checksRun).toContain('claims.efficacy.unproven');
   });
 });
+
+describe('claims network hardening & offline heuristic mode', () => {
+  it('returns baseline evaluation with diagnostic status in offline fallback mode', async () => {
+    const { analyzeClaims, BACKEND_UNAVAILABLE_DIAGNOSTIC } = await import('./claims');
+    const result = await analyzeClaims(SOURCE, { offlineHeuristicFallback: true });
+    expect(result).toBeDefined();
+    expect(result.diagnostic).toBe(BACKEND_UNAVAILABLE_DIAGNOSTIC);
+    expect(result.isOfflineFallback).toBe(true);
+    expect(result.findings).toBeInstanceOf(Array);
+  });
+
+  it('throws structured ClaimsUnavailableError with diagnostic status when fallback is disabled', async () => {
+    const { analyzeClaims, ClaimsUnavailableError, BACKEND_UNAVAILABLE_DIAGNOSTIC } = await import('./claims');
+    await expect(analyzeClaims(SOURCE, { offlineHeuristicFallback: false })).rejects.toThrowError(
+      ClaimsUnavailableError
+    );
+    try {
+      await analyzeClaims(SOURCE, { offlineHeuristicFallback: false });
+    } catch (err: any) {
+      expect(err.diagnostic).toBe(BACKEND_UNAVAILABLE_DIAGNOSTIC);
+      expect(err.message).toContain('Backend Service Unavailable');
+    }
+  });
+});
+

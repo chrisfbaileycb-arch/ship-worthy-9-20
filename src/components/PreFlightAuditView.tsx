@@ -949,12 +949,14 @@ test.describe('A11y & ARIA Automated Matrix', () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label htmlFor="audit-app-name-input" className="block text-xs font-bold text-slate-700 uppercase mb-1">
               Application Name
             </label>
             <input
               type="text"
               id="audit-app-name-input"
+              name="audit-app-name-input"
+              aria-label="Application Name"
               value={appName}
               onChange={(e) => setAppName(e.target.value)}
               placeholder="e.g. 1WithOut Master PWA"
@@ -963,13 +965,15 @@ test.describe('A11y & ARIA Automated Matrix', () => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label htmlFor="audit-live-url-input" className="block text-xs font-bold text-slate-700 uppercase mb-1">
               Live Preview / Production URL
             </label>
             <div className="relative">
               <input
                 type="text"
                 id="audit-live-url-input"
+                name="audit-live-url-input"
+                aria-label="Live Preview / Production URL"
                 value={liveUrl}
                 onChange={(e) => setLiveUrl(e.target.value)}
                 placeholder="https://your-app.com"
@@ -980,12 +984,14 @@ test.describe('A11y & ARIA Automated Matrix', () => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label htmlFor="audit-repo-url-input" className="block text-xs font-bold text-slate-700 uppercase mb-1">
               Repository URL (GitHub / GitLab)
             </label>
             <input
               type="text"
               id="audit-repo-url-input"
+              name="audit-repo-url-input"
+              aria-label="Repository URL (GitHub / GitLab)"
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
               placeholder="https://github.com/user/repo"
@@ -995,12 +1001,14 @@ test.describe('A11y & ARIA Automated Matrix', () => {
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+          <label htmlFor="audit-stack-desc-input" className="block text-xs font-bold text-slate-700 uppercase mb-1">
             Stack Description & Environment Architecture
           </label>
           <input
             type="text"
             id="audit-stack-desc-input"
+            name="audit-stack-desc-input"
+            aria-label="Audit Stack Description"
             value={stackDescription}
             onChange={(e) => setStackDescription(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:bg-white outline-none"

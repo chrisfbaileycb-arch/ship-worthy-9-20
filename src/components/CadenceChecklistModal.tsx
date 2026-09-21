@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { AppRegistryItem, CadenceMilestone, CadenceScheduleDetailed } from "../types";
 import { buildDefaultCadence } from "../utils/governance";
+import { SecondaryActionButton } from "./ui/SecondaryActionButton";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -293,13 +294,11 @@ export const CadenceChecklistModal: React.FC<CadenceChecklistModalProps> = ({
           <div className="text-xs text-slate-400">
             Cadence auto-updates based on {app.launchDate} deployment origin.
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+          <SecondaryActionButton
+            onCancelOrBack={onClose}
           >
             Save & Close
-          </button>
+          </SecondaryActionButton>
         </div>
       </div>
     </div>
