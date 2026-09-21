@@ -23,8 +23,8 @@ import { CommercialLicenseModal } from "./components/CommercialLicenseModal";
 import { ShieldCheck, Cpu, SlidersHorizontal, Award } from "lucide-react";
 
 export function App() {
-  // Active Tab defaults to 'overview' per verification pipeline
-  const [activeTab, setActiveTab] = useState<TabType>("overview");
+  // Active Tab defaults to 'registry' (Fleet Matrix & Lifecycle Board as primary landing)
+  const [activeTab, setActiveTab] = useState<TabType>("registry");
 
   // Sub-mode for QA Matrix: 6-Pillar Pre-Flight Studio vs Shipworthy Isolated Sandbox Runner
   const [qaMatrixMode, setQaMatrixMode] = useState<"studio" | "runner">("studio");

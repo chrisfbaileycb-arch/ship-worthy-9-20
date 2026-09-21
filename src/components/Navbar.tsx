@@ -38,16 +38,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const navItems: { id: ActiveTab; label: string; icon: React.FC<{ className?: string }>; description: string }[] = [
     {
-      id: "overview",
-      label: "Overview",
-      icon: Home,
-      description: "Mission control & target endpoints",
-    },
-    {
       id: "registry",
-      label: "Fleet Matrix",
+      label: "Fleet Registry",
       icon: Layers,
       description: "3-Phase Lifecycle Board & Portfolio Matrix",
+    },
+    {
+      id: "overview",
+      label: "Mission Control",
+      icon: Home,
+      description: "Governance endpoints & SOP pipeline",
     },
     {
       id: "discern",
@@ -85,7 +85,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Brand Logo */}
           <div
             id="brand-logo-container"
-            onClick={() => setActiveTab("overview")}
+            onClick={() => setActiveTab("registry")}
             className="flex items-center gap-3 cursor-pointer group"
           >
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-700 p-0.5 shadow-sm group-hover:scale-105 transition-transform duration-200">

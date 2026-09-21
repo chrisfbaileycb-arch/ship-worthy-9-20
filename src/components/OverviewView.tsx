@@ -75,7 +75,6 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     addApp,
     updateApp,
     removeApp,
-    loadTemplates,
     clearApps,
   } = useRegistryApps(propApps);
 
@@ -164,14 +163,6 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     removeApp(appId);
     if (propOnRemoveApp) propOnRemoveApp(appId);
     showToast(`Removed "${appName}" from tracked portfolio.`, "info");
-  };
-
-  const handleLoadDemoTemplates = () => {
-    const loaded = loadTemplates();
-    if (propOnAddApp && loaded.length > 0) {
-      loaded.forEach((a) => propOnAddApp(a));
-    }
-    showToast("Loaded 4 example template blueprints into registry.");
   };
 
   const handlePromoteToPreFlight = (app: AppRegistryItem) => {
@@ -275,19 +266,6 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Optional demo templates link when apps already exist */}
-            {totalCount > 0 && (
-              <button
-                id="load-example-templates-btn"
-                type="button"
-                onClick={handleLoadDemoTemplates}
-                className="text-xs text-slate-400 hover:text-cyan-400 underline underline-offset-4 decoration-slate-700 hover:decoration-cyan-500 transition-colors cursor-pointer mr-1"
-                title="Populate 4 example template blueprints"
-              >
-                Load Example Templates
-              </button>
-            )}
-
             <button
               id="header-live-inspector-btn"
               type="button"
@@ -415,32 +393,22 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
           <div className="space-y-2">
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              No Applications Currently Tracked
+              No projects tracked yet
             </h2>
             <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
-              Your governance pipeline is clean. Connect a GitHub repository or live deployment URL to initiate 3-phase verification, security headers inspection, and maintenance tracking.
+              Ingest a GitHub repo or Live URL to initialize your Launch Matrix
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+          <div className="flex items-center justify-center pt-2">
             <button
               id="track-first-app-btn"
               type="button"
               onClick={() => setIsIngestModalOpen(true)}
-              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-sm shadow-xl shadow-emerald-600/30 transition-all transform hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
+              className="px-8 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-sm shadow-xl shadow-emerald-600/30 transition-all transform hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 stroke-[3]" />
               <span>+ Track First App</span>
-            </button>
-
-            <button
-              id="empty-load-templates-btn"
-              type="button"
-              onClick={handleLoadDemoTemplates}
-              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-            >
-              <FileCode className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Load Example Templates (4 Blueprints)</span>
             </button>
           </div>
         </section>

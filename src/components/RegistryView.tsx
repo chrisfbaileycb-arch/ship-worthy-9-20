@@ -804,13 +804,14 @@ export const RegistryView: React.FC<RegistryViewProps> = ({
             <Layers className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-lg font-black text-white">No Applications in Fleet Matrix</h2>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto">
-              Ingest your first GitHub repository or live staging URL to activate 6-pillar pre-flight gating,
-              readiness scoring, and continuous 180-day maintenance cadence tracking.
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              No projects tracked yet
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
+              Ingest a GitHub repo or Live URL to initialize your Launch Matrix
             </p>
           </div>
-          <div className="flex items-center justify-center gap-3 flex-wrap pt-2">
+          <div className="flex items-center justify-center pt-2">
             <button
               id="empty-ingest-first-app-btn"
               type="button"
@@ -818,20 +819,10 @@ export const RegistryView: React.FC<RegistryViewProps> = ({
                 setIngestTargetPhase("in_development");
                 setIsIngestModalOpen(true);
               }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer"
+              className="flex items-center gap-2 px-7 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-sm shadow-lg shadow-emerald-500/20 transition-all cursor-pointer transform hover:-translate-y-0.5"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>+ Ingest First App</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                loadExampleTemplates();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Load Example Templates</span>
+              <span>+ Track First App</span>
             </button>
           </div>
         </div>

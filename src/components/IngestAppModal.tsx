@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { AppRegistryItem, LifecyclePhase, ProjectScope, TabType } from "../types";
 import { buildDefaultCadence } from "../utils/governance";
+import { addStoredApp } from "../utils/persistence";
 import {
   Plus,
   X,
@@ -121,12 +122,15 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
       activeAlertsCount: 0,
     };
 
+    // Immediately save to persistent storage and notify all reactive hooks
+    addStoredApp(newApp);
     onAddApp(newApp);
+
+    // Switch view to RegistryView and broadcast navigation event
     if (onNavigate) {
       onNavigate("registry");
-    } else {
-      window.dispatchEvent(new CustomEvent("1without_navigate_tab", { detail: "registry" }));
     }
+    window.dispatchEvent(new CustomEvent("1without_navigate_tab", { detail: "registry" }));
     onClose();
   };
 
