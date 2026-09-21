@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AppRegistryItem, LifecyclePhase, ProjectScope } from "../types";
+import { AppRegistryItem, LifecyclePhase, ProjectScope, TabType } from "../types";
 import { buildDefaultCadence } from "../utils/governance";
 import {
   Plus,
@@ -16,9 +16,10 @@ import {
 interface IngestAppModalProps {
   onClose: () => void;
   onAddApp: (app: AppRegistryItem) => void;
+  onNavigate?: (tab: TabType) => void;
 }
 
-export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddApp }) => {
+export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddApp, onNavigate }) => {
   // 1. Project / Application Name
   const [name, setName] = useState<string>("");
   const [organization, setOrganization] = useState<string>("");
@@ -121,6 +122,11 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
     };
 
     onAddApp(newApp);
+    if (onNavigate) {
+      onNavigate("registry");
+    } else {
+      window.dispatchEvent(new CustomEvent("1without_navigate_tab", { detail: "registry" }));
+    }
     onClose();
   };
 

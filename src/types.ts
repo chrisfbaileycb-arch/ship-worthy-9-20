@@ -1,6 +1,7 @@
 // Suggested active tab lineup in Navbar.tsx
 export type ActiveTab =
   | "overview"       // Mission control & target endpoints
+  | "registry"       // Fleet Matrix & Lifecycle Registry
   | "discern"        // Trope Buster / YouTube & Pitch Hole-Testing
   | "clearance"      // URL Security Audit & USPTO Trademark verification
   | "qa-matrix"      // 6-Pillar QA Inspection

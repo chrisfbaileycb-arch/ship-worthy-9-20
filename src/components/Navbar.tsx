@@ -44,16 +44,16 @@ export const Navbar: React.FC<NavbarProps> = ({
       description: "Mission control & target endpoints",
     },
     {
+      id: "registry",
+      label: "Fleet Matrix",
+      icon: Layers,
+      description: "3-Phase Lifecycle Board & Portfolio Matrix",
+    },
+    {
       id: "discern",
       label: "Discern",
       icon: Sparkles,
       description: "Trope Buster / YouTube & Pitch Hole-Testing",
-    },
-    {
-      id: "clearance",
-      label: "Clearance",
-      icon: Layers,
-      description: "URL Security Audit & USPTO Trademark verification",
     },
     {
       id: "qa-matrix",
@@ -116,7 +116,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 activeTab === item.id ||
                 (item.id === "overview" && activeTab === "cover") ||
                 (item.id === "qa-matrix" && (activeTab === "audit" || activeTab === "shipworthy")) ||
-                (item.id === "clearance" && activeTab === "registry") ||
+                ((item.id === "registry" || item.id === "clearance") && (activeTab === "registry" || activeTab === "clearance")) ||
                 (item.id === "defense-gate" && activeTab === "defense");
 
               return (
@@ -224,7 +224,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               activeTab === item.id ||
               (item.id === "overview" && activeTab === "cover") ||
               (item.id === "qa-matrix" && (activeTab === "audit" || activeTab === "shipworthy")) ||
-              (item.id === "clearance" && activeTab === "registry") ||
+              ((item.id === "registry" || item.id === "clearance") && (activeTab === "registry" || activeTab === "clearance")) ||
               (item.id === "defense-gate" && activeTab === "defense");
 
             return (

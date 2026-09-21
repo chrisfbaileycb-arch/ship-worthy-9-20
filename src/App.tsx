@@ -5,8 +5,9 @@ import {
   AppRegistryItem,
   SecurityClearance,
 } from "./types";
-import { INITIAL_REGISTRY_APPS, SAMPLE_SCENARIOS } from "./data/samples";
+import { SAMPLE_SCENARIOS } from "./data/samples";
 import { buildDefaultCadence } from "./utils/governance";
+import { useRegistryApps } from "./utils/persistence";
 import { Navbar } from "./components/Navbar";
 import { OverviewView } from "./components/OverviewView";
 import { DiscernView } from "./components/DiscernView";
@@ -61,33 +62,23 @@ export function App() {
     localStorage.setItem("1without_commercial_pass_active", isCommercialActive ? "true" : "false");
   }, [isCommercialActive]);
 
-  // App Lifecycle Registry state
-  const [registryApps, setRegistryApps] = useState<AppRegistryItem[]>(() => {
-    const saved = localStorage.getItem("1without_apps_registry");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((item: any) => ({
-            ...item,
-            lifecyclePhase:
-              item.lifecyclePhase ||
-              (item.environment === "Production"
-                ? "deployed_monitored"
-                : item.environment === "Staging"
-                ? "ready_for_deployment"
-                : "in_development"),
-            projectScope: item.projectScope || "master_core_ip",
-          }));
-        }
-      } catch (e) {}
-    }
-    return INITIAL_REGISTRY_APPS;
-  });
-
   useEffect(() => {
-    localStorage.setItem("1without_apps_registry", JSON.stringify(registryApps));
-  }, [registryApps]);
+    const handleCustomNav = (e: any) => {
+      if (e.detail) {
+        setActiveTab(e.detail);
+      }
+    };
+    window.addEventListener("1without_navigate_tab", handleCustomNav);
+    return () => window.removeEventListener("1without_navigate_tab", handleCustomNav);
+  }, []);
+
+  // App Lifecycle Registry state connected reactively to persistence.ts
+  const {
+    apps: registryApps,
+    addApp: handleAddApp,
+    updateApp: handleUpdateApp,
+    removeApp: handleRemoveApp,
+  } = useRegistryApps();
 
   const handleSelectSample = (sampleId: string) => {
     const sample = SAMPLE_SCENARIOS.find((s) => s.id === sampleId);
@@ -109,18 +100,6 @@ export function App() {
     setSkillInitialContent(text);
     setSkillInitialName(`Executable Skill: ${title.replace(/^Audit:\s*|^Remediation Directives:\s*/i, "")}`);
     setActiveTab("skills");
-  };
-
-  const handleAddApp = (app: AppRegistryItem) => {
-    setRegistryApps((prev) => [app, ...prev]);
-  };
-
-  const handleUpdateApp = (updatedApp: AppRegistryItem) => {
-    setRegistryApps((prev) => prev.map((a) => (a.id === updatedApp.id ? updatedApp : a)));
-  };
-
-  const handleRemoveApp = (appId: string) => {
-    setRegistryApps((prev) => prev.filter((a) => a.id !== appId));
   };
 
   const handleSelectAppForAudit = (app: AppRegistryItem) => {
@@ -165,7 +144,7 @@ export function App() {
               if (tab === "shipworthy" || tab === "audit") {
                 setActiveTab("qa-matrix");
               } else if (tab === "registry") {
-                setActiveTab("clearance");
+                setActiveTab("registry");
               } else if (tab === "defense") {
                 setActiveTab("defense-gate");
               } else {
@@ -194,13 +173,15 @@ export function App() {
           />
         )}
 
-        {/* VIEW 3: CLEARANCE / URL SECURITY AUDIT & USPTO TRADEMARK VERIFICATION & LIFECYCLE */}
+        {/* VIEW 3: FLEET MATRIX / APP REGISTRY & 3-PHASE LIFECYCLE BOARD */}
         {(activeTab === "clearance" || activeTab === "registry") && (
           <RegistryView
             apps={registryApps}
             onAddApp={handleAddApp}
+            onUpdateApp={handleUpdateApp}
             onRemoveApp={handleRemoveApp}
             onSelectAppForAudit={handleSelectAppForAudit}
+            onNavigate={setActiveTab}
           />
         )}
 
