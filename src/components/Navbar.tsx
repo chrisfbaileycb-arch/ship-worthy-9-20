@@ -11,6 +11,8 @@ import {
   Layers,
   History,
   CheckCircle2,
+  CreditCard,
+  Award,
 } from "lucide-react";
 
 interface NavbarProps {
@@ -19,6 +21,8 @@ interface NavbarProps {
   securityClearance?: SecurityClearance | null;
   onOpenDefenseModal?: () => void;
   onOpenDefenseGate?: () => void;
+  isCommercialActive?: boolean;
+  onOpenCommercialModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -27,6 +31,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   securityClearance,
   onOpenDefenseModal,
   onOpenDefenseGate,
+  isCommercialActive = true,
+  onOpenCommercialModal,
 }) => {
   const openDefense = onOpenDefenseGate || onOpenDefenseModal || (() => setActiveTab("defense-gate"));
 
@@ -71,7 +77,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header
-      id="shipworthy-header"
+      id="governance-hub-header"
       className="sticky top-0 z-50 backdrop-blur-md bg-white/95 border-b border-slate-200/90 text-slate-900 shadow-xs"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -90,14 +96,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-lg tracking-tight text-slate-900">
-                  Shipworthy v2
+                  1WithOut
                 </span>
                 <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  Verification Engine
+                  Governance Hub
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium hidden sm:block">
-                Pure Verification • Trope Buster • 6-Pillar QA Matrix
+                Universal Production Launch & Governance Command Center
               </p>
             </div>
           </div>
@@ -149,7 +155,30 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* Right Action buttons */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {/* Commercial Licensing Pass Status Button */}
+            {onOpenCommercialModal && (
+              <button
+                id="commercial-license-nav-btn"
+                type="button"
+                onClick={onOpenCommercialModal}
+                title="Manage Commercial Governance Access & Licensing ($29/6-mo flat)"
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100 shadow-2xs"
+              >
+                <Award className={`w-3.5 h-3.5 ${isCommercialActive ? "text-emerald-600" : "text-slate-500"}`} />
+                <span>
+                  {isCommercialActive ? (
+                    <>
+                      <span className="font-bold text-emerald-700">Commercial Pass</span>
+                      <span className="text-[10px] text-slate-500 ml-1">($29/6-mo)</span>
+                    </>
+                  ) : (
+                    <>Public Mode</>
+                  )}
+                </span>
+              </button>
+            )}
+
             {/* Defense status indicator */}
             <button
               id="defense-status-pill-btn"

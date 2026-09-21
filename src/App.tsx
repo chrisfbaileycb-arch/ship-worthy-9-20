@@ -18,7 +18,8 @@ import { AuditHistoryView } from "./components/AuditHistoryView";
 import { SkillBuilderView } from "./components/SkillBuilderView";
 import { NovaAgentWorkspaceView } from "./components/NovaAgentWorkspaceView";
 import { OpcLaunchpadView } from "./components/OpcLaunchpadView";
-import { ShieldCheck, Cpu, SlidersHorizontal } from "lucide-react";
+import { CommercialLicenseModal } from "./components/CommercialLicenseModal";
+import { ShieldCheck, Cpu, SlidersHorizontal, Award } from "lucide-react";
 
 export function App() {
   // Active Tab defaults to 'overview' per verification pipeline
@@ -48,6 +49,17 @@ export function App() {
   const [auditInitialStackDesc, setAuditInitialStackDesc] = useState<string>(
     "React 18, Vite, Tailwind CSS, Express TypeScript server, Port 3000 Ingress, Gemini 3.8 Flash server-side integration, and Defense-of-Break sentinel."
   );
+
+  // Commercial Governance Licensing ($29 / 6-Month Pass flat rate)
+  const [isCommercialModalOpen, setIsCommercialModalOpen] = useState<boolean>(false);
+  const [isCommercialActive, setIsCommercialActive] = useState<boolean>(() => {
+    const saved = localStorage.getItem("1without_commercial_pass_active");
+    return saved !== null ? saved === "true" : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("1without_commercial_pass_active", isCommercialActive ? "true" : "false");
+  }, [isCommercialActive]);
 
   // App Lifecycle Registry state
   const [registryApps, setRegistryApps] = useState<AppRegistryItem[]>(() => {
@@ -140,6 +152,8 @@ export function App() {
         setActiveTab={setActiveTab}
         securityClearance={securityClearance}
         onOpenDefenseGate={() => setActiveTab("defense-gate")}
+        isCommercialActive={isCommercialActive}
+        onOpenCommercialModal={() => setIsCommercialModalOpen(true)}
       />
 
       {/* Main Content View Switcher */}
@@ -336,26 +350,39 @@ export function App() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className={`font-bold ${isTechnicalDarkMode ? "text-slate-300" : "text-slate-700"}`}>
-              Shipworthy v2 • Pure Verification Engine
+              1WithOut • Universal Production Launch & Governance Command Center
             </span>
             <span>•</span>
-            <span>Single Source of Truth Operating System</span>
+            <span
+              onClick={() => setIsCommercialModalOpen(true)}
+              className="cursor-pointer hover:underline text-emerald-400 font-semibold"
+            >
+              Commercial Pass: {isCommercialActive ? "Active ($29/6-mo)" : "Public Scanner Mode"}
+            </span>
           </div>
           <div className="flex items-center gap-4 text-[11px] text-slate-500 flex-wrap justify-center">
-            <span>Trope Buster Discern</span>
+            <span>Dynamic Ingestion Engine</span>
             <span>•</span>
-            <span>USPTO Trademark Clearance</span>
+            <span>3-Phase Lifecycle Governance</span>
             <span>•</span>
-            <span>Live Security Header Checker</span>
+            <span>Live Security Inspection</span>
+            <span>•</span>
+            <span>30/60/90/180-Day Cadence</span>
             <span>•</span>
             <span>6-Pillar QA Matrix</span>
             <span>•</span>
-            <span>Defense-of-Break Gate</span>
-            <span>•</span>
-            <span>Audit History & PDF Dossiers</span>
+            <span>Dossier Export</span>
           </div>
         </div>
       </footer>
+
+      {/* Commercial Governance Licensing Modal */}
+      <CommercialLicenseModal
+        isOpen={isCommercialModalOpen}
+        onClose={() => setIsCommercialModalOpen(false)}
+        isCommercialActive={isCommercialActive}
+        onToggleCommercialStatus={setIsCommercialActive}
+      />
     </div>
   );
 }

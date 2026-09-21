@@ -10,6 +10,7 @@ import {
   Cpu,
   Layers,
   Sparkles,
+  CheckCircle2,
 } from "lucide-react";
 
 interface IngestAppModalProps {
@@ -18,46 +19,80 @@ interface IngestAppModalProps {
 }
 
 export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddApp }) => {
+  // 1. Project / Application Name
   const [name, setName] = useState<string>("");
   const [organization, setOrganization] = useState<string>("");
   const [owner, setOwner] = useState<string>("");
-  const [sourceInput, setSourceInput] = useState<string>("");
-  const [sourceType, setSourceType] = useState<"github" | "live_url">("github");
+
+  // 2. Primary Source: GitHub Repository URL
+  const [repoUrl, setRepoUrl] = useState<string>("");
+
+  // 3. Live Deployment Target URL
+  const [liveUrl, setLiveUrl] = useState<string>("");
+
+  // 4. Entity / Track Type
   const [projectScope, setProjectScope] = useState<ProjectScope>("master_core_ip");
+
+  // 5. Initial Stage
   const [targetPhase, setTargetPhase] = useState<LifecyclePhase>("in_development");
+
   const [description, setDescription] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setErrorMsg("Project Name is required.");
+      setErrorMsg("Project / Application Name is required.");
       return;
     }
-    if (!sourceInput.trim()) {
-      setErrorMsg("Source URL (GitHub repository or Live URL) is required.");
+    if (!repoUrl.trim() && !liveUrl.trim()) {
+      setErrorMsg("Please provide at least a GitHub Repository URL or a Live Deployment Target URL.");
       return;
     }
 
-    const isGithub = sourceInput.includes("github.com") || sourceType === "github";
     const today = new Date().toISOString().split("T")[0];
+    const cleanRepo = repoUrl.trim() || undefined;
+    const cleanLive = liveUrl.trim() || undefined;
+    const primaryInput = cleanRepo || cleanLive || "";
+    const resolvedSourceType = cleanRepo && cleanLive ? "both" : cleanRepo ? "github" : "live_url";
 
     const newApp: AppRegistryItem = {
       id: `app-${Date.now()}`,
       name: name.trim(),
-      description: description.trim() || `${projectScope === "master_core_ip" ? "Core IP" : "Client Deliverable"} project ingested via ${sourceType === "github" ? "GitHub" : "Live URL"}.`,
+      description:
+        description.trim() ||
+        `${
+          projectScope === "master_core_ip" ? "Core Company IP" : "Freelance / Client Deliverable"
+        } tracked in ${
+          targetPhase === "in_development"
+            ? "Development"
+            : targetPhase === "ready_for_deployment"
+            ? "Pre-Flight Staging"
+            : "Production"
+        }.`,
       organization: organization.trim() || "Independent Workspace",
       owner: owner.trim() || "Lead Architect",
-      repoUrl: isGithub ? sourceInput.trim() : undefined,
-      liveUrl: !isGithub ? sourceInput.trim() : undefined,
-      sourceInput: sourceInput.trim(),
-      sourceType: isGithub ? "github" : "live_url",
+      repoUrl: cleanRepo,
+      liveUrl: cleanLive,
+      sourceInput: primaryInput,
+      sourceType: resolvedSourceType,
       projectScope,
       lifecyclePhase: targetPhase,
-      environment: targetPhase === "deployed_monitored" ? "Production" : targetPhase === "ready_for_deployment" ? "Staging" : "Development",
+      environment:
+        targetPhase === "deployed_monitored"
+          ? "Production"
+          : targetPhase === "ready_for_deployment"
+          ? "Staging"
+          : "Development",
       launchDate: today,
-      readinessScore: targetPhase === "deployed_monitored" ? 92 : targetPhase === "ready_for_deployment" ? 85 : 70,
-      status: targetPhase === "deployed_monitored" ? "Live & Healthy" : targetPhase === "ready_for_deployment" ? "Pre-Flight Pending" : "In Development",
+      readinessScore:
+        targetPhase === "deployed_monitored" ? 92 : targetPhase === "ready_for_deployment" ? 85 : 72,
+      status:
+        targetPhase === "deployed_monitored"
+          ? "Live & Healthy"
+          : targetPhase === "ready_for_deployment"
+          ? "Pre-Flight Pending"
+          : "In Development",
       daysSinceLaunch: targetPhase === "deployed_monitored" ? 1 : 0,
       cadenceStatus: {
         day30Completed: false,
@@ -106,7 +141,7 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
                 <Plus className="w-5 h-5" />
               </span>
               <h2 className="text-xl font-bold text-white tracking-tight">
-                Dynamic Ingestion Engine (+ Ingest App)
+                Track New Project / Ingest Source
               </h2>
             </div>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
@@ -131,11 +166,11 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
             </div>
           )}
 
-          {/* 1. Project Name & Org/Owner */}
+          {/* 1. Project / Application Name */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label htmlFor="ingest-project-name" className="text-xs font-semibold text-slate-300">
-                Project Name <span className="text-rose-400">*</span>
+                1. Project / Application Name <span className="text-rose-400">*</span>
               </label>
               <input
                 id="ingest-project-name"
@@ -143,78 +178,70 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. NextGen Client Invoicing PWA"
+                placeholder="e.g. PulseMetrics Analytics PWA"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div className="space-y-1.5">
               <label htmlFor="ingest-org-owner" className="text-xs font-semibold text-slate-300">
-                Organization / Owner
+                Entity / Organization & Owner
               </label>
               <input
                 id="ingest-org-owner"
                 type="text"
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
-                placeholder="e.g. Acme FinTech Corp"
+                placeholder="e.g. Core Systems • Lead Architect"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
               />
             </div>
           </div>
 
-          {/* 2. Source Input & Source Type */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label htmlFor="ingest-source-url" className="text-xs font-semibold text-slate-300">
-                Source Input (GitHub Repo or Live URL) <span className="text-rose-400">*</span>
-              </label>
-              <div className="flex items-center gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setSourceType("github")}
-                  className={`px-2 py-0.5 rounded cursor-pointer ${
-                    sourceType === "github" ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  GitHub
-                </button>
-                <span className="text-slate-600">|</span>
-                <button
-                  type="button"
-                  onClick={() => setSourceType("live_url")}
-                  className={`px-2 py-0.5 rounded cursor-pointer ${
-                    sourceType === "live_url" ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Live HTML / PWA
-                </button>
-              </div>
-            </div>
-
-            <div className="relative">
-              <input
-                id="ingest-source-url"
-                type="url"
-                required
-                value={sourceInput}
-                onChange={(e) => setSourceInput(e.target.value)}
-                placeholder={
-                  sourceType === "github"
-                    ? "https://github.com/organization/project-repo"
-                    : "https://project-endpoint.run.app"
-                }
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+          {/* 2. Primary Source: GitHub Repository URL */}
+          <div className="space-y-1.5">
+            <label htmlFor="ingest-repo-url" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <GitBranch className="w-3.5 h-3.5 text-slate-400" />
+                <span>2. Primary Source: GitHub Repository URL</span>
+              </span>
+              <span className="text-[11px] text-slate-500 font-normal">Codebase of record</span>
+            </label>
+            <input
+              id="ingest-repo-url"
+              type="url"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              placeholder="https://github.com/organization/project-repository"
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono text-xs"
+            />
           </div>
 
-          {/* 3. Project Scope Toggle */}
+          {/* 3. Live Deployment Target URL */}
+          <div className="space-y-1.5">
+            <label htmlFor="ingest-live-url" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                <span>3. Live Deployment Target URL</span>
+              </span>
+              <span className="text-[11px] text-slate-500 font-normal">Production or staging HTML/PWA web address</span>
+            </label>
+            <input
+              id="ingest-live-url"
+              type="url"
+              value={liveUrl}
+              onChange={(e) => setLiveUrl(e.target.value)}
+              placeholder="https://your-production-app.run.app"
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono text-xs"
+            />
+          </div>
+
+          {/* 4. Entity / Track Type */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-300">
-              Project Scope
+              4. Entity / Track Type
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div
                 onClick={() => setProjectScope("master_core_ip")}
                 className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
@@ -231,9 +258,9 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
                   className="mt-1 text-emerald-500 cursor-pointer"
                 />
                 <div>
-                  <div className="text-xs font-bold">Master Core IP</div>
+                  <div className="text-xs font-bold text-white">Core Company IP</div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
-                    Internal proprietary intellectual property & core platform systems.
+                    Strict compliance, IP retention, and defense-of-break protection.
                   </div>
                 </div>
               </div>
@@ -254,19 +281,19 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
                   className="mt-1 text-indigo-500 cursor-pointer"
                 />
                 <div>
-                  <div className="text-xs font-bold">Freelance / Client Deliverable</div>
+                  <div className="text-xs font-bold text-white">Freelance / Client App</div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
-                    Client handoff, commercial workspace, or client-facing project.
+                    Rapid delivery, client-ready handoff dossier, and commercial invoicing.
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 4. Target Phase Radio Selection */}
+          {/* 5. Initial Stage: 3-Phase Lifecycle Pipeline */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-300">
-              Target Phase (3-Phase Lifecycle Pipeline)
+              5. Initial Stage (Lifecycle Pipeline)
             </label>
             <div className="space-y-2">
               <div
@@ -286,14 +313,14 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
                     className="text-amber-500 cursor-pointer"
                   />
                   <div>
-                    <span className="text-xs font-bold">Tab 1: In Development</span>
+                    <span className="text-xs font-bold text-white">In Development</span>
                     <span className="text-[11px] text-slate-400 block">
-                      Active coding, initial builds, basic linting and secret scanning.
+                      Active coding sandbox, linting baselines, and secret leak scanning.
                     </span>
                   </div>
                 </div>
                 <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                  Dev
+                  Tab 1
                 </span>
               </div>
 
@@ -314,14 +341,14 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
                     className="text-cyan-500 cursor-pointer"
                   />
                   <div>
-                    <span className="text-xs font-bold">Tab 2: Ready for Deployment (Pre-Flight Gate)</span>
+                    <span className="text-xs font-bold text-white">Next on Deck (Pre-Flight Gate)</span>
                     <span className="text-[11px] text-slate-400 block">
-                      Hard blocking staging gate; enforces the 6-pillar launch matrix.
+                      Staging release gate; evaluates 6-pillar verification matrix before DNS switch.
                     </span>
                   </div>
                 </div>
                 <span className="text-[10px] uppercase font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                  Staging
+                  Tab 2
                 </span>
               </div>
 
@@ -342,14 +369,14 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
                     className="text-emerald-500 cursor-pointer"
                   />
                   <div>
-                    <span className="text-xs font-bold">Tab 3: Deployed & Monitored</span>
+                    <span className="text-xs font-bold text-white">Deployed & Monitored</span>
                     <span className="text-[11px] text-slate-400 block">
-                      Live production registry with Live HTML Inspector & 30/60/90/180-day cadence.
+                      Live production target with Live Security Inspector & 30/60/90/180-day cadence.
                     </span>
                   </div>
                 </div>
                 <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                  Live
+                  Tab 3
                 </span>
               </div>
             </div>
@@ -358,34 +385,34 @@ export const IngestAppModal: React.FC<IngestAppModalProps> = ({ onClose, onAddAp
           {/* Optional Brief Description */}
           <div className="space-y-1.5">
             <label htmlFor="ingest-desc" className="text-xs font-semibold text-slate-300">
-              Brief Description
+              Application Architecture / Notes (Optional)
             </label>
-            <input
+            <textarea
               id="ingest-desc"
-              type="text"
+              rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Offline-first IndexedDB document annotator with background sync."
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              placeholder="e.g. React 18 PWA, Tailwind CSS, Express backend on port 3000 with Stripe webhook signature validation."
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none text-xs"
             />
           </div>
 
-          {/* Form Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+          {/* Submit Actions */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               id="submit-ingest-app-btn"
               type="submit"
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              <span>Ingest Into Fleet</span>
+              <span>Register Ingested Project</span>
             </button>
           </div>
         </form>
