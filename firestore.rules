@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1WithOut Master Engine - Production Firestore Security Rules
+    // Architecture: Full-stack zero-trust.
+    // ALL data access is strictly brokered through the server-side Express API via the Firebase Admin SDK.
+    // Direct client SDK reads and writes to all system collections are completely denied.
+
+    // Immutable audit trail logs
+    match /audit_logs/{logId} {
+      allow read, write: if false;
+    }
+
+    // Security clearance tokens and authorization records
+    match /authorization_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /clearances/{clearanceId} {
+      allow read, write: if false;
+    }
+
+    // Operator runtime sessions
+    match /sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    // Distributed rate limit counters
+    match /rate_limits/{limitKey} {
+      allow read, write: if false;
+    }
+
+    // Defense-of-break heuristic scan records
+    match /defense_scans/{scanId} {
+      allow read, write: if false;
+    }
+
+    // Discernment assessment reports
+    match /discernment_reports/{reportId} {
+      allow read, write: if false;
+    }
+
+    // Production deployment readiness records
+    match /readiness_history/{suiteId} {
+      allow read, write: if false;
+    }
+
+    // Default deny for all other collections and documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

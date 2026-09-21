@@ -1,0 +1,6 @@
+{
+  "name": "1WithOut",
+  "description": "Shipworthy Testing & Certification Engine: Isolated execution worker plane, Docker sandbox provisioning with 2 CPUs/2GB RAM limits, Playwright chaos persona testing (Happy Path, Impatient Chaos, Edge Case/Stress), and Flight Report certification.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
