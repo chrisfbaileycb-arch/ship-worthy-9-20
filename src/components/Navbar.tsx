@@ -1,5 +1,6 @@
 import React from "react";
 import { TabType, ActiveTab, SecurityClearance } from "../types";
+import { ModelKeyField } from "./ModelKeyField";
 import {
   Zap,
   Sparkles,
@@ -156,6 +157,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Action buttons */}
           <div className="flex items-center gap-2">
+            {/* Visitor's own Gemini key: analyses run on it, and it is never stored */}
+            <ModelKeyField />
+
             {/* Commercial Licensing Pass Status Button */}
             {onOpenCommercialModal && (
               <button

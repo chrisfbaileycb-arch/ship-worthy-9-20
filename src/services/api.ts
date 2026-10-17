@@ -12,6 +12,10 @@ import {
   LiveInspectionReport,
   SubsystemReadinessReport,
 } from "../types";
+import { responseError, withUserKey } from "../lib/byok";
+
+/** A model call is allowed to take a while; a few seconds is how long a failure takes, not an answer. */
+const MODEL_CALL_TIMEOUT_MS = 120_000;
 
 export const BACKEND_UNAVAILABLE_DIAGNOSTIC =
   "Backend Service Unavailable (Check Supabase edge function deployment or CORS headers)";
@@ -173,81 +177,21 @@ export async function authorizeDefensePasscode(
 // 3. DISCERNMENT AUDIT
 // ==========================================
 
-export function runOfflineHeuristicDiscernment(
-  content: string,
-  inputType: IntakeModality,
-  sourceUrl?: string
-): DiscernmentReport & { diagnostic: string; isOfflineFallback: true } {
-  const lines = (content || "").split("\n").filter((l) => l.trim().length > 0);
-  const sampleClaims: ClaimEvaluation[] = lines.slice(0, 5).map((line, idx) => ({
-    id: `claim-heuristic-${idx + 1}`,
-    quotedText: line.length > 120 ? line.substring(0, 117) + "..." : line,
-    classification: /guaranteed|100%|unlimited/i.test(line)
-      ? "Outcome Appears Atypical"
-      : "Supported by Evidence",
-    heuristicConcern: /guaranteed|100%|unlimited/i.test(line)
-      ? "Unqualified absolute claim detected without documented qualification."
-      : "None",
-    evidenceReasoning: /guaranteed|100%|unlimited/i.test(line)
-      ? "Absolute claim detected without documented qualification."
-      : "Stated premise is verifiable through standard telemetry.",
-    saferRewrite: line.replace(/guaranteed|100%/gi, "empirically benchmarked"),
-  }));
-
-  return {
-    id: `audit-offline-${Date.now()}`,
-    title: sourceUrl ? `Audit: ${sourceUrl}` : "Opportunity Discernment Report",
-    sourceType: inputType,
-    sourceUrl,
-    summary: `${BACKEND_UNAVAILABLE_DIAGNOSTIC}. Evaluated in offline client-side heuristic mode.`,
-    overallScore: 84,
-    evidenceIndex: "A-HEURISTIC-BASELINE",
-    claims: sampleClaims,
-    sandboxTestPlan: {
-      title: "Offline Baseline Sandbox Plan",
-      budgetLimit: "$0.00",
-      timeframe: "3 business days",
-      hypothesis: "Heuristic baseline parameters validate foundational functionality.",
-      steps: [
-        "Clone clean working branch",
-        "Run offline pre-flight verification",
-        "Execute local synthetic test harness",
-      ],
-      killCriteria: [
-        "Unauthenticated data mutation",
-        "Persistent 5xx gateway errors",
-      ],
-      successSignal: "Zero fatal uncaught exceptions across all test runs",
-    },
-    createdAt: new Date().toISOString(),
-    diagnostic: BACKEND_UNAVAILABLE_DIAGNOSTIC,
-    isOfflineFallback: true,
-  };
-}
-
 export async function runDiscernmentAudit(
   content: string,
   inputType: IntakeModality,
   sourceUrl?: string,
   mode: ProcessingMode = "evaluate",
-  securityPasscode?: string,
-  options?: FetchScanOptions
+  securityPasscode?: string
 ): Promise<DiscernmentReport> {
-  const allowFallback = options?.offlineHeuristicFallback !== false;
   try {
     const res = await fetch("/api/discern", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withUserKey({ "Content-Type": "application/json" }),
       body: JSON.stringify({ content, inputType, sourceUrl, mode, securityPasscode }),
     });
 
-    if (!res.ok) {
-      if (res.status === 502 || res.status === 503 || res.status === 504) {
-        throw new ServiceUnavailableError();
-      }
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Discernment failed with status ${res.status}`);
-    }
+    if (!res.ok) throw await responseError(res, "Discernment failed");
 
     const data = await res.json();
     return {
@@ -259,12 +203,8 @@ export async function runDiscernmentAudit(
       createdAt: new Date().toISOString(),
     };
   } catch (err: any) {
-    if (isNetworkOrAvailabilityError(err)) {
-      if (allowFallback) {
-        return runOfflineHeuristicDiscernment(content, inputType, sourceUrl);
-      }
-      throw new ServiceUnavailableError(BACKEND_UNAVAILABLE_DIAGNOSTIC, err);
-    }
+    if (err?.name === "AbortError") throw new Error("The analysis took longer than two minutes and was stopped. Try again, or send less text.");
+    if (isNetworkOrAvailabilityError(err)) throw new ServiceUnavailableError(BACKEND_UNAVAILABLE_DIAGNOSTIC, err);
     throw err;
   }
 }
@@ -273,68 +213,17 @@ export async function runDiscernmentAudit(
 // 4. AGENT SKILL BUILDER
 // ==========================================
 
-export function runOfflineHeuristicSkillBuild(
-  tutorialContent: string,
-  skillName: string,
-  targetPlatform: string = "universal",
-  sourceModality: IntakeModality = "text"
-): AgentSkillPackage & { diagnostic: string; isOfflineFallback: true } {
-  const cleanName = skillName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-") || "custom-skill";
-  return {
-    id: `skill-offline-${Date.now()}`,
-    skillName,
-    description: `Synthesized skill package for ${skillName} (Offline heuristic baseline)`,
-    version: "1.0.0",
-    targetPlatform,
-    sourceModality,
-    directivesCount: 5,
-    dependencies: ["@playwright/test", "typescript"],
-    steps: [
-      {
-        id: "step-1",
-        order: 1,
-        title: "Initialize Session & Verify Health",
-        actionType: "verification",
-        assignedAgentRole: "DOM_BROWSER_AGENT",
-        agentCapabilitySummary: "Verifies application target readiness",
-        instruction: "Navigate to target root and inspect DOM readiness",
-        target: "/",
-        errorHandling: "Retry once with exponential backoff; log diagnostic on failure",
-        verificationCheck: "HTTP status 200 with viewport meta present",
-      },
-    ],
-    skillMarkdown: `# ${skillName}\n\n${BACKEND_UNAVAILABLE_DIAGNOSTIC}.\nBaseline skill package generated in offline heuristic mode.\n\n## Overview\n${tutorialContent.substring(0, 300)}...`,
-    playwrightScript: `// Automated baseline Playwright script for ${cleanName}\nimport { test, expect } from '@playwright/test';\n\ntest('baseline test', async ({ page }) => {\n  await page.goto('/');\n  await expect(page).toHaveTitle(/.+/);\n});`,
-    toolDefinitionsJson: JSON.stringify(
-      [
-        {
-          name: `${cleanName}_execute`,
-          description: `Execute main lifecycle operations for ${skillName}`,
-          parameters: { type: "object", properties: { input: { type: "string" } }, required: ["input"] },
-        },
-      ],
-      null,
-      2
-    ),
-    createdAt: new Date().toISOString(),
-    diagnostic: BACKEND_UNAVAILABLE_DIAGNOSTIC,
-    isOfflineFallback: true,
-  };
-}
-
 export async function buildAgentSkill(
   tutorialContent: string,
   skillName: string,
   targetPlatform: string = "universal",
   sourceModality: IntakeModality = "text",
-  securityPasscode?: string,
-  options?: FetchScanOptions
+  securityPasscode?: string
 ): Promise<AgentSkillPackage> {
-  const allowFallback = options?.offlineHeuristicFallback !== false;
   try {
     const res = await fetch("/api/skills/build", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withUserKey({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         tutorialContent,
         skillName,
@@ -344,13 +233,7 @@ export async function buildAgentSkill(
       }),
     });
 
-    if (!res.ok) {
-      if (res.status === 502 || res.status === 503 || res.status === 504) {
-        throw new ServiceUnavailableError();
-      }
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Skill generation failed with status ${res.status}`);
-    }
+    if (!res.ok) throw await responseError(res, "Skill generation failed");
 
     const data = await res.json();
     return {
@@ -361,12 +244,8 @@ export async function buildAgentSkill(
       createdAt: new Date().toISOString(),
     };
   } catch (err: any) {
-    if (isNetworkOrAvailabilityError(err)) {
-      if (allowFallback) {
-        return runOfflineHeuristicSkillBuild(tutorialContent, skillName, targetPlatform, sourceModality);
-      }
-      throw new ServiceUnavailableError(BACKEND_UNAVAILABLE_DIAGNOSTIC, err);
-    }
+    if (err?.name === "AbortError") throw new Error("The analysis took longer than two minutes and was stopped. Try again, or send less text.");
+    if (isNetworkOrAvailabilityError(err)) throw new ServiceUnavailableError(BACKEND_UNAVAILABLE_DIAGNOSTIC, err);
     throw err;
   }
 }
@@ -375,153 +254,27 @@ export async function buildAgentSkill(
 // 5. PRE-FLIGHT LAUNCH MATRIX AUDIT SCAN
 // ==========================================
 
-export function runOfflineHeuristicPreFlightScan(
-  appName: string,
-  stackDescription?: string,
-  liveUrl?: string,
-  repoUrl?: string,
-  codeSnippets?: string
-): AppAuditReport & { diagnostic: string; isOfflineFallback: true } {
-  return {
-    id: `scan-offline-${Date.now()}`,
-    appName,
-    liveUrl,
-    repoUrl,
-    stackDescription,
-    launchReadinessScore: 82,
-    status: "READY_TO_SHIP",
-    pillars: [
-      {
-        pillarId: "security",
-        name: "Security, Secrets & Data Privacy",
-        score: 85,
-        summary: "Offline baseline evaluation of secret exposure and surface parameters.",
-        checks: [
-          {
-            id: "chk-sec-1",
-            name: "Zero Unencrypted Hardcoded Secrets",
-            status: "PASSED",
-            description: "No obvious private API keys detected in stack specification.",
-            recommendedFix: "Maintain secret isolation in environment variables.",
-          },
-          {
-            id: "chk-sec-2",
-            name: "CORS & Origin Hardening",
-            status: "WARNING",
-            description: "Verify explicit allowed origins once edge backend is reachable.",
-            recommendedFix: "Set explicit Access-Control-Allow-Origin headers.",
-          },
-          {
-            id: "chk-sec-3",
-            name: "HTTPS / TLS Enforcement",
-            status: "PASSED",
-            description: "HTTPS protocol structure validated.",
-            recommendedFix: "Enforce TLS 1.3.",
-          },
-        ],
-      },
-      {
-        pillarId: "infra",
-        name: "HTTP Security Headers & Infrastructure",
-        score: 80,
-        summary: "Security header defensive posture evaluation.",
-        checks: [
-          {
-            id: "chk-hdr-1",
-            name: "Content-Security-Policy (CSP)",
-            status: "PASSED",
-            description: "Strict default-src and script-src directives configured.",
-            recommendedFix: "Audit CSP directives regularly.",
-          },
-          {
-            id: "chk-hdr-2",
-            name: "X-Content-Type-Options: nosniff",
-            status: "PASSED",
-            description: "MIME sniffing protection enabled.",
-            recommendedFix: "Keep header active.",
-          },
-        ],
-      },
-      {
-        pillarId: "claims",
-        name: "Claims Discernment & Truth-Testing",
-        score: 84,
-        summary: "Marketing claims and user promise verification against functional capabilities.",
-        checks: [
-          {
-            id: "chk-clm-1",
-            name: "Substantiated Reliability Promises",
-            status: "PASSED",
-            description: "No unsubstantiated zero-failure uptime claims.",
-            recommendedFix: "Benchmark claims empirically.",
-          },
-        ],
-      },
-      {
-        pillarId: "legal",
-        name: "License & Legal IP Clearance",
-        score: 90,
-        summary: "Open-source dependency and licensing compliance sweep.",
-        checks: [
-          {
-            id: "chk-leg-1",
-            name: "Permissive Open-Source Licenses",
-            status: "PASSED",
-            description: "MIT and Apache-2.0 dependencies confirmed.",
-            recommendedFix: "Audit transitive licenses annually.",
-          },
-        ],
-      },
-    ],
-    cadenceSchedule: {
-      day30Tasks: [
-        "Review runtime access logs and failure rates",
-        "Verify edge functions and API token rotations",
-      ],
-      day90Tasks: [
-        "Conduct quarterly accessibility & WCAG contrast audit",
-        "Benchmark database queries and edge latency",
-      ],
-      day180Tasks: [
-        "Perform comprehensive dependency security audit",
-        "Recertify regulatory compliance and privacy policies",
-      ],
-    },
-    createdAt: new Date().toISOString(),
-    diagnostic: BACKEND_UNAVAILABLE_DIAGNOSTIC,
-    isOfflineFallback: true,
-  };
-}
-
 export async function runPreFlightScan(
   appName: string,
   stackDescription?: string,
   liveUrl?: string,
   repoUrl?: string,
-  codeSnippets?: string,
-  options?: FetchScanOptions
+  codeSnippets?: string
 ): Promise<AppAuditReport> {
-  const allowFallback = options?.offlineHeuristicFallback !== false;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second rapid timeout
+  const timeoutId = setTimeout(() => controller.abort(), MODEL_CALL_TIMEOUT_MS);
 
   try {
     const res = await fetch("/api/audit/scan", {
       method: "POST",
       signal: controller.signal,
-      headers: { "Content-Type": "application/json" },
+      headers: withUserKey({ "Content-Type": "application/json" }),
       body: JSON.stringify({ appName, stackDescription, liveUrl, repoUrl, codeSnippets }),
     });
 
     clearTimeout(timeoutId);
 
-    if (!res.ok) {
-      if (res.status === 502 || res.status === 503 || res.status === 504) {
-        throw new ServiceUnavailableError();
-      }
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Pre-flight scan failed with status ${res.status}`);
-    }
+    if (!res.ok) throw await responseError(res, "Pre-flight scan failed");
 
     const data = await res.json();
     return {
@@ -534,12 +287,8 @@ export async function runPreFlightScan(
     };
   } catch (err: any) {
     clearTimeout(timeoutId);
-    if (isNetworkOrAvailabilityError(err) || err.name === "AbortError") {
-      if (allowFallback) {
-        return runOfflineHeuristicPreFlightScan(appName, stackDescription, liveUrl, repoUrl, codeSnippets);
-      }
-      throw new ServiceUnavailableError(BACKEND_UNAVAILABLE_DIAGNOSTIC, err);
-    }
+    if (err?.name === "AbortError") throw new Error("The analysis took longer than two minutes and was stopped. Try again, or send less text.");
+    if (isNetworkOrAvailabilityError(err)) throw new ServiceUnavailableError(BACKEND_UNAVAILABLE_DIAGNOSTIC, err);
     throw err;
   }
 }
@@ -548,73 +297,25 @@ export async function runPreFlightScan(
 // 6. PROCESSING PIPELINE
 // ==========================================
 
-export function runOfflineHeuristicPipeline(
-  mode: ProcessingMode,
-  rawContent: string,
-  inputType: IntakeModality,
-  title?: string
-): PipelineResult {
-  const lines = (rawContent || "").split("\n").filter((l) => l.trim().length > 0);
-  return {
-    title: title || `Pipeline: ${mode.toUpperCase()}`,
-    mode,
-    overview: `${BACKEND_UNAVAILABLE_DIAGNOSTIC}. Baseline evaluation synthesized in offline client-side heuristic mode.`,
-    keyTakeaways: [
-      `Input modality [${inputType}] ingested: ${lines.length} lines parsed.`,
-      "Baseline client-side heuristic pass completed successfully.",
-      "Check Supabase edge function deployment for deep AI language processing.",
-    ],
-    sections: [
-      {
-        heading: "1. Baseline Architecture Ingestion",
-        content: `Extracted ${lines.length} structural specifications from submitted content. Core integrity verified.`,
-        actionItems: ["Verify live deployment health endpoints", "Review security headers"],
-      },
-      {
-        heading: "2. Operational Reliability Constraints",
-        content: "Operational boundaries established. Offline execution modes confirmed active.",
-      },
-    ],
-    executionChecklist: [
-      "Review baseline findings in dashboard",
-      "Deploy Supabase edge functions to unlock real-time deep neural reasoning",
-    ],
-    diagnostic: BACKEND_UNAVAILABLE_DIAGNOSTIC,
-    isOfflineFallback: true,
-  };
-}
-
 export async function processPipeline(
   mode: ProcessingMode,
   rawContent: string,
   inputType: IntakeModality,
-  title?: string,
-  options?: FetchScanOptions
+  title?: string
 ): Promise<PipelineResult> {
-  const allowFallback = options?.offlineHeuristicFallback !== false;
   try {
     const res = await fetch("/api/pipeline/process", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withUserKey({ "Content-Type": "application/json" }),
       body: JSON.stringify({ mode, rawContent, inputType, title }),
     });
 
-    if (!res.ok) {
-      if (res.status === 502 || res.status === 503 || res.status === 504) {
-        throw new ServiceUnavailableError();
-      }
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Pipeline failed with status ${res.status}`);
-    }
+    if (!res.ok) throw await responseError(res, "Pipeline failed");
 
     return await res.json();
   } catch (err: any) {
-    if (isNetworkOrAvailabilityError(err)) {
-      if (allowFallback) {
-        return runOfflineHeuristicPipeline(mode, rawContent, inputType, title);
-      }
-      throw new ServiceUnavailableError(BACKEND_UNAVAILABLE_DIAGNOSTIC, err);
-    }
+    if (err?.name === "AbortError") throw new Error("The analysis took longer than two minutes and was stopped. Try again, or send less text.");
+    if (isNetworkOrAvailabilityError(err)) throw new ServiceUnavailableError(BACKEND_UNAVAILABLE_DIAGNOSTIC, err);
     throw err;
   }
 }
