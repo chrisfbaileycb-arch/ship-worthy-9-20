@@ -358,6 +358,35 @@ The app runs fully without Supabase configured. Leave both `VITE_` variables bla
 and it is local-only: scans work, sign-in and history are hidden. That is a
 supported mode, not a degraded one.
 
+## Bring your own key
+
+The analyses that need a model (Discern, the Skill Builder, the 6-pillar audit, the pipeline, claims)
+run on the **visitor's own Gemini key**.
+
+- The key is entered in the top bar and held in that tab's memory only. It is never written to
+  `localStorage`, `sessionStorage` or a cookie, and a reload forgets it.
+- It is sent as an `x-user-gemini-key` header with each request that needs a model. The server uses it
+  for that one call, does not store or log it, and reads **no** model key from its environment, so
+  there is no operator key to spend.
+- No key gives `401 KEY_REQUIRED`. A key Google refuses gives `401 KEY_INVALID`. A failed model call
+  gives `502 MODEL_ERROR` carrying the real reason. None of them is ever answered with a report.
+
+That last point is deliberate. These routes used to fall back to canned reports whenever the key was
+missing or the model hiccuped, including an "audit" that returned `READY_TO_SHIP, 94/100` for any
+input without reading it. That is exactly the failure this project exists to catch, so the fallbacks
+are gone, and `server/no-fabrication.test.ts` fails if they return.
+
+The key does pass through this server on its way to Google. If it must never leave the browser, the
+model calls would have to move client-side; that has not been done.
+
+## What does not run here
+
+Sandbox provisioning, the persona runs and flight-report "certification" were removed. They returned
+random CPU and memory figures, a fixed `PASSED` for three personas, and a score of 95 for every input;
+nothing was ever started or measured. `/api/shipworthy/*` now answers `501`. The Sandbox Runner tab
+only generates Docker, Playwright and Testcontainers files for you to run yourself, and executes
+nothing. Real execution needs a real isolated runner, which does not exist yet.
+
 ## Setup
 
 ```bash

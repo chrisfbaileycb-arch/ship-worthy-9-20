@@ -156,13 +156,12 @@ export async function runDeploymentReadinessChecks(sessionId?: string | null): P
   try {
     const hasSecretKey = !!process.env.SESSION_SECRET;
     const hasPort = !!process.env.PORT || true; // 3000 default is valid
-    const hasGeminiKey = !!serverConfig.geminiApiKey;
     const hasPasscodes = serverConfig.defensePasscodes.length > 0;
 
     const evidenceParts = [
       `SESSION_SECRET: ${hasSecretKey ? "CONFIGURED" : "DEFAULT_USED"}`,
       `PORT: ${serverConfig.port}`,
-      `GEMINI_API_KEY: ${hasGeminiKey ? "CONFIGURED" : "NOT_SUPPLIED"}`,
+      `MODEL_KEYS: bring-your-own (the server holds none)`,
       `DEFENSE_PASSCODES: ${serverConfig.defensePasscodes.length} active credential(s)`,
     ];
 
@@ -173,7 +172,7 @@ export async function runDeploymentReadinessChecks(sessionId?: string | null): P
       status: "PASSED",
       evidence: evidenceParts.join(" | "),
       durationMs: Date.now() - tEnvStart,
-      details: { hasSecretKey, hasGeminiKey, passcodeCount: serverConfig.defensePasscodes.length },
+      details: { hasSecretKey, passcodeCount: serverConfig.defensePasscodes.length },
     });
   } catch (err: any) {
     checks.push({
@@ -189,25 +188,14 @@ export async function runDeploymentReadinessChecks(sessionId?: string | null): P
   // ─── 5. Gemini API Configuration & Readiness ──────────────────────────────
   const tGeminiStart = Date.now();
   try {
-    if (serverConfig.geminiApiKey) {
-      checks.push({
-        id: "CHK-05-GEMINI-AI-INTEGRATION",
-        name: "Gemini Model Service Key Configuration",
-        category: "AI_INTEGRATION",
-        status: "PASSED",
-        evidence: "GEMINI_API_KEY is configured exclusively in server-side environment. Zero client exposure.",
-        durationMs: Date.now() - tGeminiStart,
-      });
-    } else {
-      checks.push({
-        id: "CHK-05-GEMINI-AI-INTEGRATION",
-        name: "Gemini Model Service Key Configuration",
-        category: "AI_INTEGRATION",
-        status: "SKIPPED",
-        evidence: "GEMINI_API_KEY not set in environment. High-fidelity heuristic and local fallbacks active.",
-        durationMs: Date.now() - tGeminiStart,
-      });
-    }
+    checks.push({
+      id: "CHK-05-GEMINI-AI-INTEGRATION",
+      name: "Gemini Model Key Mode",
+      category: "AI_INTEGRATION",
+      status: "PASSED",
+      evidence: "Model calls run on each visitor's own key, sent per request. The server holds no model key, and a request without one is refused rather than answered with canned output.",
+      durationMs: Date.now() - tGeminiStart,
+    });
   } catch (err: any) {
     checks.push({
       id: "CHK-05-GEMINI-AI-INTEGRATION",
@@ -817,20 +805,12 @@ export async function checkSubsystemReadiness(): Promise<ReadinessSubsystemRepor
   }
 
   // 9. Gemini AI Engine
-  const hasGemini = !!serverConfig.geminiApiKey;
-  const geminiDep: DependencyStatusReport = hasGemini
-    ? {
-        status: "CONFIGURED",
-        verified: true,
-        mode: "API_KEY_PRESENT",
-        details: { serverSideSecured: true },
-      }
-    : {
-        status: "DEGRADED",
-        verified: false,
-        mode: "HEURISTIC_FALLBACK",
-        details: { reason: "GEMINI_API_KEY absent; heuristic sentinel engine active." },
-      };
+  const geminiDep: DependencyStatusReport = {
+    status: "CONFIGURED",
+    verified: true,
+    mode: "BRING_YOUR_OWN_KEY",
+    details: { serverHoldsKey: false, note: "Each request carries the visitor's own key." },
+  };
 
   // Compile summary counts across all dependencies
   const allDeps = [

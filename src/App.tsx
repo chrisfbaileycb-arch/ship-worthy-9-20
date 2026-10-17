@@ -219,7 +219,7 @@ export function App() {
 
               <span className="text-[11px] text-slate-500 hidden sm:inline-flex items-center gap-1">
                 <SlidersHorizontal className="w-3 h-3 text-slate-400" />
-                <span>Dual Engine: Empirical Rule Scanner + Persona Execution</span>
+                <span>Rule Scanner + Generated Test Scripts</span>
               </span>
             </div>
 

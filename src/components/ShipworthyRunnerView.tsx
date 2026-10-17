@@ -16,11 +16,6 @@ import {
   generatePythonTestcontainersScript,
   generatePlaywrightTypeScriptScript,
   generateFlightReportMarkdown,
-  provisionSandbox,
-  runPersonaInSandbox,
-  generateShipworthyFlightReport,
-  teardownSandbox,
-  BACKEND_UNAVAILABLE_DIAGNOSTIC,
 } from "../services/shipworthyEngine";
 import {
   Shield,
@@ -64,127 +59,18 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
   const [activePersona, setActivePersona] = useState<"A" | "B" | "C">("A");
   const [copiedScript, setCopiedScript] = useState<string | null>(null);
 
-  // Execution Worker State
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [currentStepName, setCurrentStepName] = useState<string>("");
-  const [executionProgress, setExecutionProgress] = useState<number>(0);
-  const [workerLogs, setWorkerLogs] = useState<Array<{ timestamp: string; level: string; msg: string }>>([
-    { timestamp: "00:00:01", level: "INFO", msg: "Shipworthy isolated worker plane initialized in idle standby." },
-    { timestamp: "00:00:02", level: "SYSTEM", msg: "Resource caps enforced: Max 2.0 CPUs, 2048 MB RAM, 30s health-check bound." },
-  ]);
-
-  // Telemetry & Results
-  const [containerHealth, setContainerHealth] = useState<ContainerHealthTelemetry | null>(null);
-  const [personaResults, setPersonaResults] = useState<{
+  // Nothing in this deployment runs a sandbox or the personas, so there is no run to show. These
+  // stay empty; the only thing that should ever fill them is a real executor.
+  const workerLogs = [
+    { timestamp: "--:--:--", level: "INFO", msg: "Nothing has been run. This page generates test scripts for you to run yourself; it does not execute them." },
+  ];
+  const [containerHealth] = useState<ContainerHealthTelemetry | null>(null);
+  const [personaResults] = useState<{
     personaA: PersonaTestResult | null;
     personaB: PersonaTestResult | null;
     personaC: PersonaTestResult | null;
-  }>({
-    personaA: null,
-    personaB: null,
-    personaC: null,
-  });
-  const [flightReport, setFlightReport] = useState<ShipworthyFlightReport | null>(null);
-
-  const addLog = (level: string, msg: string) => {
-    const now = new Date().toTimeString().split(" ")[0];
-    setWorkerLogs((prev) => [...prev, { timestamp: now, level, msg }]);
-  };
-
-  // Run the Full Shipworthy Automated Matrix
-  const handleRunFullMatrix = async () => {
-    setIsRunning(true);
-    setExecutionProgress(5);
-    setCurrentStepName("Provisioning Disposable Container Sandbox...");
-
-    addLog("WORKER", `Receiving repository target: ${config.repoUrl} [${config.branch}]`);
-    addLog("DOCKER", `Applying strict resource limits: cpus='2.0', memory='2048M'`);
-
-    try {
-      // 1. Provision Sandbox API
-      const provData = await provisionSandbox(config);
-      const sandbox = provData.sandbox;
-      if (provData.diagnostic) {
-        addLog("DIAGNOSTIC", `${provData.diagnostic} (Running in offline client-side heuristic mode)`);
-      }
-      setContainerHealth(sandbox);
-
-      addLog("DOCKER", `Sandbox container spawned [${sandbox.containerId}] on ephemeral port :${sandbox.ephemeralPort}`);
-      addLog("HEALTH", `Probing http://127.0.0.1:${sandbox.ephemeralPort}${config.healthEndpoint} (timeout 30s)...`);
-
-      setExecutionProgress(25);
-      setCurrentStepName("Verifying Container Healthcheck...");
-
-      await new Promise((r) => setTimeout(r, 600));
-      addLog("HEALTH", `Healthcheck status HTTP 200 OK verified in ${sandbox.healthCheckDurationMs}ms.`);
-
-      // 2. Run Synthetic Personas
-      setExecutionProgress(40);
-      setCurrentStepName("Executing Persona A (Happy Path - Standard E2E Journey)...");
-      addLog("PLAYWRIGHT", "Starting headless Chromium instance for Persona A: Happy Path...");
-
-      const personaData = await runPersonaInSandbox(sandbox.containerId, "ALL");
-      const results = personaData.results;
-
-      setExecutionProgress(60);
-      addLog("PLAYWRIGHT", `Persona A completed: 6/6 steps passed in ${results.personaA.executionTimeMs}ms. Score: 98/100.`);
-
-      setExecutionProgress(75);
-      setCurrentStepName("Executing Persona B (Impatient Chaos - Rage Clicks & 375x667 Viewport)...");
-      addLog("PLAYWRIGHT", "Emulating mobile viewport 375x667 & dispatching rapid double-clicks (Persona B)...");
-      addLog("PLAYWRIGHT", `Persona B completed: Debounce locking validated. 7/7 steps passed.`);
-
-      setExecutionProgress(85);
-      setCurrentStepName("Executing Persona C (Edge Case & Stress - Unicode & Slow 3G)...");
-      addLog("PLAYWRIGHT", "Emulating Slow 3G network conditions & injecting 8KB multi-byte Unicode strings...");
-      addLog("PLAYWRIGHT", `Persona C completed: Zero memory leaks or layout breakages detected.`);
-
-      setPersonaResults(results);
-
-      // 3. Generate Official Flight Report & Certification
-      setExecutionProgress(92);
-      setCurrentStepName("Synthesizing Shipworthy Flight Report & Certification Dossier...");
-
-      const reportData = await generateShipworthyFlightReport({
-        repoTarget: config.repoUrl,
-        commitSha: "c8f92a1",
-        containerHealth: sandbox,
-        personaResults: results,
-      }, config);
-      const rep = reportData.report;
-
-      setFlightReport(rep);
-
-      // 4. Automatic Teardown & Destruction
-      setExecutionProgress(98);
-      setCurrentStepName("Executing Complete Container Sandbox Teardown...");
-      await teardownSandbox(sandbox.containerId);
-
-      addLog("TEARDOWN", `Container [${sandbox.containerId}] destroyed. Ports released. Memory scrubbed cleanly.`);
-      setContainerHealth((prev) => (prev ? { ...prev, teardownStatus: "DESTROYED_CLEAN" } : null));
-
-      setExecutionProgress(100);
-      setCurrentStepName("Shipworthy Pipeline Complete!");
-      addLog("CERT", `Official Status: [${rep.status}] - Score: ${rep.certificationScore}/100.`);
-      setActiveTab("flight_report");
-    } catch (err: any) {
-      addLog("ERROR", `Pipeline failed: ${err.message || "Unknown error"}`);
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  const handleManualTeardown = async () => {
-    if (!containerHealth) return;
-    addLog("TEARDOWN", `Initiating manual teardown of sandbox container [${containerHealth.containerId}]...`);
-    try {
-      await teardownSandbox(containerHealth.containerId);
-      setContainerHealth((prev) => (prev ? { ...prev, teardownStatus: "DESTROYED_CLEAN" } : null));
-      addLog("TEARDOWN", `Container cleanly destroyed.`);
-    } catch (e: any) {
-      addLog("ERROR", `Teardown error: ${e.message}`);
-    }
-  };
+  }>({ personaA: null, personaB: null, personaC: null });
+  const [flightReport] = useState<ShipworthyFlightReport | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -219,73 +105,24 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
               </div>
               <div>
                 <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-3">
-                  Shipworthy Testing & Certification Engine
+                  Shipworthy Launch-Check Scripts
                   <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                    Isolated Worker Plane
+                    Script generator
                   </span>
                 </h1>
                 <p className="text-xs text-slate-400">
-                  Disposable Container Sandboxes (2 CPUs / 2GB RAM max) • Playwright Headless Chaos Matrix (Personas A, B, C) • Flight Certification Dossier
+                  Generates Docker, Playwright and Testcontainers files so you can run a launch check yourself. Nothing is executed here.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {containerHealth && containerHealth.teardownStatus === "ACTIVE" && (
-              <button
-                id="shipworthy-manual-teardown-btn"
-                onClick={handleManualTeardown}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-bold transition-all cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Teardown Sandbox</span>
-              </button>
-            )}
-
-            <button
-              id="shipworthy-run-full-matrix-btn"
-              onClick={handleRunFullMatrix}
-              disabled={isRunning}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold shadow-lg transition-all cursor-pointer ${
-                isRunning
-                  ? "bg-slate-800 text-slate-400 cursor-not-allowed"
-                  : "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 shadow-emerald-500/20"
-              }`}
-            >
-              {isRunning ? (
-                <>
-                  <Activity className="w-4 h-4 animate-spin text-emerald-400" />
-                  <span>Executing Pipeline...</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4 fill-current" />
-                  <span>Provision & Run Shipworthy Matrix</span>
-                </>
-              )}
-            </button>
-          </div>
         </div>
 
-        {/* Progress Bar when running */}
-        {isRunning && (
-          <div className="mt-6 pt-4 border-t border-slate-800/80">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="font-semibold text-emerald-400 flex items-center gap-2">
-                <Activity className="w-3.5 h-3.5 animate-spin" />
-                {currentStepName}
-              </span>
-              <span className="text-slate-400 font-mono">{executionProgress}%</span>
-            </div>
-            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 rounded-full"
-                style={{ width: `${executionProgress}%` }}
-              />
-            </div>
-          </div>
-        )}
+        <div role="note" className="mt-6 pt-4 border-t border-slate-800/80 text-xs text-amber-300/90">
+          <strong>Nothing is executed in this deployment.</strong> There is no sandbox, no browser run and no certification score here.
+          The Scripts tab produces files you can run against your own environment. The other tabs describe what those scripts test, and stay empty because no results exist.
+        </div>
       </div>
 
       {/* Navigation Sub-Tabs */}
@@ -299,7 +136,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
           }`}
         >
           <Server className="w-4 h-4" />
-          <span>Sandbox & Worker Plane</span>
+          <span>Config & Test Plan</span>
         </button>
 
         <button
@@ -311,7 +148,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
           }`}
         >
           <Smartphone className="w-4 h-4" />
-          <span>Chaos Persona Matrix (A, B, C)</span>
+          <span>Persona Test Plan (A, B, C)</span>
         </button>
 
         <button
@@ -323,7 +160,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
           }`}
         >
           <Shield className="w-4 h-4" />
-          <span>Flight Report & Certification</span>
+          <span>Flight Report (not generated)</span>
           {flightReport && (
             <span
               className={`px-1.5 py-0.2 rounded text-[10px] font-extrabold ${
@@ -419,7 +256,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-lg">
               <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                 <Gauge className="w-4 h-4 text-cyan-400" />
-                Enforced Sandbox Constraints
+                Limits Written Into the Docker Spec
               </h2>
 
               <div className="space-y-3 text-xs">
@@ -438,10 +275,6 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
                   <span className="font-mono font-bold text-amber-400">30s Hard Ceiling</span>
                 </div>
 
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-400">Teardown Guarantee</span>
-                  <span className="font-mono font-bold text-emerald-400">100% Resource Destruction</span>
-                </div>
               </div>
             </div>
           </div>
@@ -453,7 +286,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                   <Activity className="w-4 h-4 text-emerald-400" />
-                  Live Container Sandbox Telemetry
+                  Container Telemetry
                 </h2>
 
                 <span
@@ -465,7 +298,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
                       : "bg-slate-800 text-slate-500"
                   }`}
                 >
-                  {containerHealth ? containerHealth.teardownStatus : "STANDBY (NOT PROVISIONED)"}
+                  {containerHealth ? containerHealth.teardownStatus : "NOT RUN"}
                 </span>
               </div>
 
@@ -493,8 +326,8 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
               ) : (
                 <div className="text-center py-8 bg-slate-950/50 rounded-xl border border-dashed border-slate-800 mb-4">
                   <Server className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                  <p className="text-xs text-slate-400">No active disposable sandbox provisioned.</p>
-                  <p className="text-[11px] text-slate-400">Click &quot;Provision &amp; Run Shipworthy Matrix&quot; above to boot worker plane.</p>
+                  <p className="text-xs text-slate-400">No container has been run, so there is no telemetry.</p>
+                  <p className="text-[11px] text-slate-400">This page does not run containers. Use the Scripts tab to run one yourself.</p>
                 </div>
               )}
             </div>
@@ -504,7 +337,7 @@ export const ShipworthyRunnerView: React.FC<ShipworthyRunnerViewProps> = ({
               <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800 text-slate-400">
                 <div className="flex items-center gap-2">
                   <Terminal className="w-4 h-4 text-emerald-400" />
-                  <span className="font-bold text-slate-200">Shipworthy Worker Console Stream</span>
+                  <span className="font-bold text-slate-200">Notes</span>
                 </div>
                 <span className="text-[11px] text-slate-400">{workerLogs.length} events logged</span>
               </div>
@@ -930,15 +763,15 @@ ${r.codeSnippetPatch}
           ) : (
             <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-2xl">
               <Shield className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-white mb-1">No Flight Report Generated Yet</h3>
+              <h3 className="text-base font-bold text-white mb-1">No flight report</h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto mb-6">
-                Click &quot;Provision &amp; Run Shipworthy Matrix&quot; to execute all 3 synthetic personas and generate an official flight certification dossier.
+                A flight report needs real test results, and this deployment does not run tests, so none can be produced. Generate the scripts, run them yourself, and judge the results yourself.
               </p>
               <button
-                onClick={handleRunFullMatrix}
+                onClick={() => setActiveTab("scripts")}
                 className="px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 transition-all cursor-pointer"
               >
-                Launch Matrix Now
+                Open the test scripts
               </button>
             </div>
           )}

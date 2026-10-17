@@ -7,7 +7,6 @@ export interface ServerConfig {
   port: number;
   nodeEnv: string;
   databaseUrl: string | null;
-  geminiApiKey: string | null;
   sessionSecret: string;
   internalAuthUser: string;
   internalAuthPasswordHash: string;
@@ -64,7 +63,6 @@ export function loadServerConfig(): ServerConfig {
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   const nodeEnv = process.env.NODE_ENV || "development";
   const databaseUrl = process.env.DATABASE_URL || null;
-  const geminiApiKey = process.env.GEMINI_API_KEY || null;
 
   // Session secret: defaults to a secure randomly generated runtime secret if omitted in dev
   const sessionSecret = process.env.SESSION_SECRET || "1without-default-dev-secret-change-in-prod";
@@ -144,7 +142,6 @@ export function loadServerConfig(): ServerConfig {
     port,
     nodeEnv,
     databaseUrl,
-    geminiApiKey,
     sessionSecret,
     internalAuthUser,
     internalAuthPasswordHash,

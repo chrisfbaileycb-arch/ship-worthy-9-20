@@ -28,6 +28,7 @@ import {
 } from "./server/readiness";
 import { getFirebaseStatus, getFirebaseAppCheck, closeFirebase } from "./server/firebase";
 import { durableSessionStore } from "./server/durable-stores";
+import { geminiClientFor, isKeyRejection, rejectMissingKey, rejectModelFailure } from "./server/byok";
 
 dotenv.config();
 
@@ -90,20 +91,6 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // General rate limiter on /api/ routes
 app.use("/api/", apiRateLimiter(250, 60000));
 
-// Lazy Google GenAI initializer
-function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
-    },
-  });
-}
-
 // Resilient Gemini Caller with Multi-Model Fallback & High-Demand (503/429) Handling
 async function callGeminiWithFallback(
   ai: GoogleGenAI,
@@ -138,6 +125,8 @@ async function callGeminiWithFallback(
       }
     } catch (err: any) {
       lastError = err;
+      // A refused key will be refused by every model; do not spend the visitor's time retrying.
+      if (isKeyRejection(err)) throw err;
       const is503Or429 =
         err?.status === 503 ||
         err?.status === 429 ||
@@ -176,7 +165,7 @@ app.get("/api/health", async (req, res) => {
     status: "ok",
     app: "1WithOut Master Engine",
     version: "2.0.0",
-    hasApiKey: !!process.env.GEMINI_API_KEY,
+    modelKeyMode: "bring-your-own",
     persistenceMode: repoHealth.mode,
     persistenceHealthy: repoHealth.healthy,
     timestamp: new Date().toISOString(),
@@ -396,7 +385,7 @@ app.post("/api/discern", apiRateLimiter(20, 60000, "discern"), async (req, res) 
       });
     }
 
-    const ai = getGeminiClient();
+    const ai = geminiClientFor(req);
 
     if (ai) {
       try {
@@ -486,15 +475,14 @@ Also synthesize a "De-Risked Real-World Test Plan":
         const parsed = JSON.parse(response.text || "{}");
         return res.json(parsed);
       } catch (geminiErr: any) {
-        console.warn("[1WithOut] Gemini discernment generation failed or overloaded. Falling back to local Discernment engine:", geminiErr?.message || geminiErr);
-        return res.json(generateLocalDiscernmentReport(content, inputType, sourceUrl));
+        return rejectModelFailure(res, geminiErr);
       }
     } else {
-      return res.json(generateLocalDiscernmentReport(content, inputType, sourceUrl));
+      return rejectMissingKey(res);
     }
   } catch (error: any) {
     console.error("Discernment API error:", error);
-    return res.json(generateLocalDiscernmentReport(req.body?.content || "", req.body?.inputType, req.body?.sourceUrl));
+    return res.status(500).json({ error: error?.message || "The request failed." });
   }
 });
 
@@ -508,7 +496,7 @@ app.post("/api/claims/analyze", apiRateLimiter(20, 60000, "claims:analyze"), asy
       return res.status(400).json({ error: "Source url or transcript text is required." });
     }
 
-    const ai = getGeminiClient();
+    const ai = geminiClientFor(req);
     if (ai) {
       try {
         const prompt = `Analyze this opportunity claim for hype, unsubstantiated guarantees, or excessive marketing promises:\nURL: ${url || "N/A"}\nTranscript/Text: ${inputContent.slice(0, 8000)}`;
@@ -535,23 +523,11 @@ app.post("/api/claims/analyze", apiRateLimiter(20, 60000, "claims:analyze"), asy
           isHeuristic: false,
         });
       } catch (geminiErr: any) {
-        console.warn("[1WithOut] Gemini claims analysis failed. Using heuristic evaluation:", geminiErr?.message || geminiErr);
+        return rejectModelFailure(res, geminiErr);
       }
     }
 
-    // Heuristic fallback
-    const hasGuarantee = /guarantee|100%|no risk|instant wealth|passive income/i.test(inputContent);
-    return res.json({
-      verdict: hasGuarantee ? "HIGH_RISK_HYPERBOLE" : "PLAUSIBLE_UNVERIFIED",
-      hypeScore: hasGuarantee ? 75 : 40,
-      discernmentNotes: [
-        hasGuarantee
-          ? "Unqualified absolute guarantee detected in promotional copy."
-          : "Standard promotional copy without empirical verification benchmarks.",
-        "Manual Discernment Required: Review return guarantees, verified bank statements, and licensing boundaries.",
-      ],
-      isHeuristic: true,
-    });
+    return rejectMissingKey(res);
   } catch (error: any) {
     console.error("Claims analysis API error:", error);
     return res.status(500).json({ error: error.message || "Failed to analyze claims." });
@@ -601,7 +577,7 @@ app.post("/api/skills/build", apiRateLimiter(15, 60000, "skills:build"), async (
       });
     }
 
-    const ai = getGeminiClient();
+    const ai = geminiClientFor(req);
 
     if (ai) {
       try {
@@ -725,15 +701,14 @@ Also generate:
         parsed.directivesCount = parsed.steps?.length || 0;
         return res.json(parsed);
       } catch (geminiErr: any) {
-        console.warn("[1WithOut] Skill builder Gemini call failed or overloaded. Falling back to local skill generator:", geminiErr?.message || geminiErr);
-        return res.json(generateLocalSkillPackage(tutorialContent, skillName, targetPlatform, sourceModality));
+        return rejectModelFailure(res, geminiErr);
       }
     } else {
-      return res.json(generateLocalSkillPackage(tutorialContent, skillName, targetPlatform, sourceModality));
+      return rejectMissingKey(res);
     }
   } catch (error: any) {
     console.error("Skill builder API error:", error);
-    return res.json(generateLocalSkillPackage(req.body?.tutorialContent || "", req.body?.skillName, req.body?.targetPlatform, req.body?.sourceModality));
+    return res.status(500).json({ error: error?.message || "The request failed." });
   }
 });
 
@@ -742,7 +717,7 @@ app.post("/api/audit/scan", apiRateLimiter(20, 60000, "audit:scan"), async (req,
   try {
     const { appName, repoUrl, liveUrl, stackDescription, codeSnippets } = req.body;
 
-    const ai = getGeminiClient();
+    const ai = geminiClientFor(req);
 
     if (ai) {
       try {
@@ -819,38 +794,14 @@ Output realistic scores (0-100), critical blocker warnings, non-blocking recomme
         const parsed = JSON.parse(response.text || "{}");
         return res.json(parsed);
       } catch (geminiErr: any) {
-        console.warn("[1WithOut] Audit scan Gemini call failed or overloaded. Falling back to local audit generator:", geminiErr?.message || geminiErr);
-        return res.json(generateLocalAuditReport(appName, stackDescription, liveUrl));
+        return rejectModelFailure(res, geminiErr);
       }
     } else {
-      return res.json(generateLocalAuditReport(appName, stackDescription, liveUrl));
+      return rejectMissingKey(res);
     }
   } catch (error: any) {
     console.error("Audit scan API error:", error);
-    return res.json(generateLocalAuditReport(req.body?.appName, req.body?.stackDescription, req.body?.liveUrl));
-  }
-});
-
-// 5.2. API: Six-Pillar Quick Scan
-app.post("/api/audit/six-pillar", apiRateLimiter(20, 60000, "audit:six-pillar"), async (req, res) => {
-  try {
-    const { targetUrl, repoUrl } = req.body || {};
-    const report = generateLocalAuditReport("Target Audit Project", undefined, targetUrl);
-    return res.json({
-      status: "COMPLETED",
-      score: report.launchReadinessScore || 85,
-      mode: "LIVE_EDGE_SCAN",
-      findings: report.pillars.map((p) => ({
-        pillar: p.name,
-        status: p.score >= 80 ? "PASSED" : "WARNING",
-        summary: p.summary,
-        recommendation: p.checks[0]?.recommendedFix || "Maintain architectural guidelines.",
-      })),
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err: any) {
-    console.error("Six pillar scan API error:", err);
-    return res.status(500).json({ error: err.message || "Failed to execute six pillar scan." });
+    return res.status(500).json({ error: error?.message || "The request failed." });
   }
 });
 
@@ -1096,7 +1047,7 @@ app.post("/api/pipeline/process", apiRateLimiter(15, 60000, "pipeline:process"),
       return res.status(400).json({ error: "rawContent is required." });
     }
 
-    const ai = getGeminiClient();
+    const ai = geminiClientFor(req);
 
     if (ai) {
       try {
@@ -1146,875 +1097,30 @@ app.post("/api/pipeline/process", apiRateLimiter(15, 60000, "pipeline:process"),
         const parsed = JSON.parse(response.text || "{}");
         return res.json(parsed);
       } catch (geminiErr: any) {
-        console.warn("[1WithOut] Universal pipeline Gemini call failed or overloaded. Falling back to local pipeline generator:", geminiErr?.message || geminiErr);
-        return res.json(generateLocalPipelineResponse(mode, title));
+        return rejectModelFailure(res, geminiErr);
       }
     } else {
-      return res.json(generateLocalPipelineResponse(mode, title));
+      return rejectMissingKey(res);
     }
   } catch (error: any) {
     console.error("Pipeline API error:", error);
-    return res.json(generateLocalPipelineResponse(req.body?.mode, req.body?.title));
+    return res.status(500).json({ error: error?.message || "The request failed." });
   }
 });
 
 // -------------------------------------------------------------
-// SHIPWORTHY TESTING & CERTIFICATION ENGINE APIS
+// SHIPWORTHY EXECUTION ENGINE: NOT IMPLEMENTED
 // -------------------------------------------------------------
-
-// Active Sandbox In-Memory Registry for Worker Lifecycle Tracking
-const ACTIVE_SANDBOXES = new Map<string, any>();
-
-// 1. Provision Disposable Container Sandbox with Strict Resource Caps (2 CPUs, 2GB RAM, 30s Timeout)
-app.post("/api/shipworthy/sandbox/provision", (req, res) => {
-  try {
-    const {
-      repoUrl = "https://github.com/company/enterprise-web-core",
-      branch = "main",
-      buildCommand = "npm ci && npm run build",
-      startCommand = "npm run start -- --port 3000 --host 0.0.0.0",
-      healthEndpoint = "/api/health",
-      maxCpuCores = 2.0,
-      maxMemoryMb = 2048,
-      healthCheckTimeoutSeconds = 30,
-      environmentVariables = {},
-    } = req.body;
-
-    // Enforce strict platform constraints
-    const enforcedCpus = Math.min(Number(maxCpuCores) || 2.0, 2.0);
-    const enforcedMemory = Math.min(Number(maxMemoryMb) || 2048, 2048);
-    const enforcedTimeout = Math.min(Number(healthCheckTimeoutSeconds) || 30, 30);
-
-    const containerId = "sbx-" + Math.random().toString(36).substring(2, 10) + "-" + Date.now().toString(36);
-    const ephemeralPort = 30000 + Math.floor(Math.random() * 15000);
-    const healthCheckDurationMs = 420 + Math.floor(Math.random() * 380);
-
-    const sandboxTelemetry = {
-      containerId,
-      ephemeralPort,
-      cpuUsagePercent: 18.4 + Math.random() * 12.0,
-      memoryUsageMb: 380 + Math.floor(Math.random() * 120),
-      maxMemoryMb: enforcedMemory,
-      maxCpuCores: enforcedCpus,
-      healthCheckDurationMs,
-      healthEndpoint,
-      uptimeSeconds: 1,
-      isHealthy: true,
-      teardownStatus: "ACTIVE",
-      repoUrl,
-      branch,
-      buildCommand,
-      startCommand,
-      environmentVariables,
-      createdAt: new Date().toISOString(),
-    };
-
-    ACTIVE_SANDBOXES.set(containerId, sandboxTelemetry);
-
-    return res.json({
-      success: true,
-      message: `Disposable sandbox [${containerId}] provisioned on ephemeral port ${ephemeralPort} with 2 CPUs / 2GB RAM caps.`,
-      sandbox: sandboxTelemetry,
-    });
-  } catch (error: any) {
-    console.error("Shipworthy sandbox provision error:", error);
-    return res.status(500).json({ error: error.message || "Failed to provision sandbox." });
-  }
+// There used to be sandbox provisioning, persona-run and flight-report routes here. None of them ran
+// anything: they returned random CPU and memory figures, a fixed PASSED result for three personas,
+// and a certification score of 95 for every input. That is the failure this product exists to catch,
+// so the routes are gone. Anything that asks for them is told so plainly.
+app.all("/api/shipworthy/*splat", (_req, res) => {
+  res.status(501).json({
+    error: "Sandbox execution is not available in this deployment. Nothing was run, and no result is available.",
+    code: "NOT_IMPLEMENTED",
+  });
 });
-
-// 2. Complete Teardown & Destruction of Disposable Sandbox
-app.post("/api/shipworthy/sandbox/teardown", (req, res) => {
-  try {
-    const { containerId } = req.body;
-    if (!containerId) {
-      return res.status(400).json({ error: "containerId is required for teardown." });
-    }
-
-    const existing = ACTIVE_SANDBOXES.get(containerId);
-    if (existing) {
-      existing.teardownStatus = "DESTROYED_CLEAN";
-      existing.uptimeSeconds = 0;
-      ACTIVE_SANDBOXES.delete(containerId);
-    }
-
-    return res.json({
-      success: true,
-      containerId,
-      teardownStatus: "DESTROYED_CLEAN",
-      message: `Sandbox container [${containerId}] completely torn down, memory buffers purged, and ports released.`,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error: any) {
-    console.error("Shipworthy teardown error:", error);
-    return res.status(500).json({ error: error.message || "Teardown failed." });
-  }
-});
-
-// 3. Run Headless Synthetic & Chaos Testing (Persona A, B, and C)
-app.post("/api/shipworthy/persona/run", (req, res) => {
-  try {
-    const { containerId, persona = "ALL" } = req.body;
-
-    // Execute Synthetic Persona Matrix
-    // PERSONA A: Happy Path
-    const personaA = {
-      persona: "PERSONA_A_HAPPY_PATH",
-      title: "Persona A: Happy Path (Standard End-to-End User Journey)",
-      description: "Validates primary conversion funnels, proper form hydration, and standard interaction sequences.",
-      status: "PASSED",
-      score: 98,
-      stepsCompleted: 6,
-      totalSteps: 6,
-      executionTimeMs: 1420,
-      frictionCount: 0,
-      consoleErrors: [],
-      networkLatenciesMs: [42, 68, 95, 110, 85, 54],
-      httpStatusCodes: { "200": 14, "204": 2, "304": 6 },
-      steps: [
-        { stepId: "a1", action: "Navigate to base URL & await DOMContentLoaded", durationMs: 240, status: "PASSED" },
-        { stepId: "a2", action: "Assert header navigation and primary hero visible", durationMs: 80, status: "PASSED" },
-        { stepId: "a3", action: "Fill standard text form fields with valid inputs", durationMs: 180, status: "PASSED" },
-        { stepId: "a4", action: "Dispatch primary action button click", durationMs: 320, status: "PASSED" },
-        { stepId: "a5", action: "Verify state change / modal confirmation rendered", durationMs: 220, status: "PASSED" },
-        { stepId: "a6", action: "Confirm zero console errors and 200 HTTP responses", durationMs: 380, status: "PASSED" },
-      ],
-    };
-
-    // PERSONA B: Impatient Chaos
-    const personaB = {
-      persona: "PERSONA_B_IMPATIENT_CHAOS",
-      title: "Persona B: Impatient Chaos (Rage Clicks, Partial Forms, 375x667 Viewport)",
-      description: "Tests click debouncing, race condition resilience, mobile 375x667 viewport resize, and abrupt route cancellation.",
-      status: "PASSED",
-      score: 92,
-      stepsCompleted: 7,
-      totalSteps: 7,
-      executionTimeMs: 2150,
-      frictionCount: 1,
-      consoleErrors: [
-        { timestamp: new Date().toISOString(), message: "Warning: Multiple in-flight requests deduplicated by idempotency key.", source: "client/transport.ts" }
-      ],
-      networkLatenciesMs: [88, 142, 210, 195, 92, 130, 75],
-      httpStatusCodes: { "200": 18, "409": 1, "304": 4 },
-      steps: [
-        { stepId: "b1", action: "Emulate mobile viewport 375x667 (iPhone SE layout)", durationMs: 120, status: "PASSED" },
-        { stepId: "b2", action: "Dispatch 5x rapid rage clicks on primary submit button", durationMs: 310, status: "PASSED" },
-        { stepId: "b3", action: "Verify button debounce / idempotency locking prevents double-charge", durationMs: 400, status: "PASSED" },
-        { stepId: "b4", action: "Type 2 characters into text input and immediately blur focus", durationMs: 190, status: "PASSED" },
-        { stepId: "b5", action: "Rotate viewport rapidly between 375x667 and 667x375", durationMs: 350, status: "PASSED" },
-        { stepId: "b6", action: "Trigger abrupt route change while async query is pending", durationMs: 440, status: "PASSED" },
-        { stepId: "b7", action: "Confirm AbortController cleanly cancelled pending network stream", durationMs: 340, status: "PASSED" },
-      ],
-    };
-
-    // PERSONA C: Edge Case & Stress
-    const personaC = {
-      persona: "PERSONA_C_EDGE_CASE_STRESS",
-      title: "Persona C: Edge Case & Stress (Extreme Payloads, Non-ASCII Fuzzing, Slow 3G)",
-      description: "Stresses memory, injection defenses, multi-byte Unicode strings, and 500ms network latency degradation.",
-      status: "PASSED",
-      score: 94,
-      stepsCompleted: 6,
-      totalSteps: 6,
-      executionTimeMs: 3480,
-      frictionCount: 0,
-      consoleErrors: [],
-      networkLatenciesMs: [520, 480, 560, 610, 490, 530],
-      httpStatusCodes: { "200": 12, "201": 2, "304": 3 },
-      steps: [
-        { stepId: "c1", action: "Emulate Slow 3G profile (500ms latency, 250kbps upload, 750kbps download)", durationMs: 150, status: "PASSED" },
-        { stepId: "c2", action: "Inject 8KB stress string with multi-byte Unicode (⚡🔥 测试 🚀 ᚠᛇᚻ) into input fields", durationMs: 680, status: "PASSED" },
-        { stepId: "c3", action: "Assert no horizontal layout overflow beyond viewport width", durationMs: 420, status: "PASSED" },
-        { stepId: "c4", action: "Inject HTML/XSS probe (<script>alert(1)</script>) and assert proper escaping", durationMs: 510, status: "PASSED" },
-        { stepId: "c5", action: "Simulate transient 503 gateway drop and verify automatic exponential backoff", durationMs: 980, status: "PASSED" },
-        { stepId: "c6", action: "Assert zero memory leaks across 10 consecutive mutation cycles", durationMs: 740, status: "PASSED" },
-      ],
-    };
-
-    return res.json({
-      success: true,
-      containerId: containerId || "sbx-active",
-      timestamp: new Date().toISOString(),
-      results: {
-        personaA,
-        personaB,
-        personaC,
-      },
-    });
-  } catch (error: any) {
-    console.error("Shipworthy persona run error:", error);
-    return res.status(500).json({ error: error.message || "Failed to execute persona tests." });
-  }
-});
-
-// 4. Generate Unified Shipworthy Flight Report & Certification Dossier (Rate-limited)
-app.post("/api/shipworthy/report/generate", apiRateLimiter(10, 60000, "report:generate"), async (req, res) => {
-  try {
-    const {
-      repoTarget = "https://github.com/company/enterprise-web-core",
-      commitSha = "c8f92a1",
-      containerHealth,
-      personaResults,
-      customNotes,
-    } = req.body;
-
-    const ai = getGeminiClient();
-
-    const healthTelemetry = containerHealth || {
-      containerId: "sbx-verified-01",
-      ephemeralPort: 34812,
-      cpuUsagePercent: 24.2,
-      memoryUsageMb: 412,
-      maxMemoryMb: 2048,
-      healthCheckDurationMs: 640,
-      uptimeSeconds: 42,
-      isHealthy: true,
-      teardownStatus: "DESTROYED_CLEAN",
-    };
-
-    const performanceMetrics = {
-      p50LatencyMs: 68,
-      p95LatencyMs: 240,
-      p99LatencyMs: 510,
-      timeToFirstByteMs: 95,
-      domContentLoadedMs: 310,
-      totalRequests: 48,
-      failedRequests: 0,
-      errorRatePercent: 0.0,
-    };
-
-    const frictionLogs = [
-      {
-        id: "fric-1",
-        persona: "PERSONA_B_IMPATIENT_CHAOS",
-        severity: "LOW",
-        category: "RACE_CONDITION",
-        location: "Submit Button Component",
-        selector: "[data-testid='submit-btn']",
-        description: "Button allowed 2 rapid clicks before applying disabled state, though backend idempotency caught the duplicate.",
-        reproductionSteps: [
-          "Navigate to checkout or action form",
-          "Double-click submit button with < 30ms interval",
-          "Observe momentary double-ripple animation before disabled state locks",
-        ],
-        impact: "Minor visual glitch; no data corruption occurred.",
-      },
-    ];
-
-    const top3RemediationPlan = [
-      {
-        priority: 1,
-        title: "Immediate Optimistic Button Locking on PointerDown",
-        targetFileOrService: "src/components/ActionButton.tsx",
-        rationale: "Applying disabled state on pointerdown instead of onClick prevents any double-submission race before event loop ticks.",
-        expectedFrictionReduction: "100% elimination of Persona B rapid rage-click visual stutter.",
-        codeSnippetPatch: `// Before:
-<button onClick={handleClick} disabled={isSubmitting}>Submit</button>
-
-// After:
-<button 
-  onPointerDown={() => { if (!isSubmitting) setIsOptimisticallyLocked(true); }}
-  onClick={handleClick} 
-  disabled={isSubmitting || isOptimisticallyLocked}
->
-  {isSubmitting ? <Spinner /> : "Submit"}
-</button>`,
-      },
-      {
-        priority: 2,
-        title: "Explicit Content-Type and Input MaxLength Enforcements",
-        targetFileOrService: "src/components/InputField.tsx",
-        rationale: "Setting maxLength on textareas prevents Persona C 8KB payloads from generating unnecessary client DOM reflows.",
-        expectedFrictionReduction: "Reduces Persona C DOM reflow time by 35ms on mobile devices.",
-        codeSnippetPatch: `// Add defensive input constraints
-<textarea
-  maxLength={4096}
-  className="w-full resize-none overflow-y-auto"
-  placeholder="Enter notes..."
-/>`,
-      },
-      {
-        priority: 3,
-        title: "Preload Critical Route Chunks for Sub-100ms TTFB",
-        targetFileOrService: "vite.config.ts",
-        rationale: "Preloading primary view assets reduces p95 network latency from 240ms to under 120ms under Slow 3G network conditions.",
-        expectedFrictionReduction: "Improves Persona C 3G load time by ~400ms.",
-        codeSnippetPatch: `// vite.config.ts
-export default defineConfig({
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'lucide-react', 'motion'],
-        }
-      }
-    }
-  }
-});`,
-      },
-    ];
-
-    // Compute Certification Score & Verdict
-    const certificationScore = 95;
-    const status: "SHIPWORTHY CERTIFIED" | "REMEDIATION REQUIRED" =
-      certificationScore >= 90 ? "SHIPWORTHY CERTIFIED" : "REMEDIATION REQUIRED";
-
-    const fullReport = {
-      id: "flight-" + Date.now().toString(36),
-      repoTarget,
-      commitSha,
-      timestamp: new Date().toISOString(),
-      status,
-      certificationScore,
-      container_health: healthTelemetry,
-      persona_results: personaResults || {
-        personaA: { status: "PASSED", score: 98, stepsCompleted: 6, totalSteps: 6, executionTimeMs: 1420, frictionCount: 0, consoleErrors: [], networkLatenciesMs: [42, 68, 95], httpStatusCodes: { "200": 14 } },
-        personaB: { status: "PASSED", score: 92, stepsCompleted: 7, totalSteps: 7, executionTimeMs: 2150, frictionCount: 1, consoleErrors: [], networkLatenciesMs: [88, 142, 210], httpStatusCodes: { "200": 18 } },
-        personaC: { status: "PASSED", score: 94, stepsCompleted: 6, totalSteps: 6, executionTimeMs: 3480, frictionCount: 0, consoleErrors: [], networkLatenciesMs: [520, 480, 560], httpStatusCodes: { "200": 12 } },
-      },
-      performance_metrics: performanceMetrics,
-      friction_logs: frictionLogs,
-      top3_remediation_plan: top3RemediationPlan,
-    };
-
-    return res.json({
-      success: true,
-      report: fullReport,
-    });
-  } catch (error: any) {
-    console.error("Shipworthy report API error:", error);
-    return res.status(500).json({ error: error.message || "Failed to generate Flight Report." });
-  }
-});
-
-// Fallback Generators for Instant Offline / Prototype Mode
-function generateLocalDiscernmentReport(content: string, inputType?: string, sourceUrl?: string) {
-  const containsEarnings = /((\$|\b)\d+k|\bmillion|\bearn|\bprofit|\bpassive income|\bguarantee)/i.test(content);
-  const containsNoCode = /(no code|no programming|in 24 hours|overnight|100% automated|99\.8%)/i.test(content);
-
-  return {
-    summary: `Structured audit of provided ${inputType || "source material"} by 1WithOut Discernment Engine. Evaluated against empirical industry standards, platform API constraints, and compliance guidelines.`,
-    overallScore: containsEarnings || containsNoCode ? 66 : 86,
-    evidenceIndex: containsEarnings ? "Moderate - Atypical Claims Detected" : "High Evidence Baseline",
-    claims: [
-      {
-        id: "claim-1",
-        quotedText: content.slice(0, 140) + "...",
-        classification: containsEarnings ? "Outcome Appears Atypical" : "Reasonable but Unverified",
-        heuristicConcern: containsEarnings ? "Earnings & ROI Guarantees" : "Technical Execution Complexity",
-        evidenceReasoning: containsEarnings
-          ? "Broad marketing claims quoting top-percentile financial outcomes without disclosing median churn, market volatility, or ongoing maintenance overhead."
-          : "Process is technically sound under ideal network conditions, but requires error boundaries for real-world rate limits.",
-        prerequisitesMissing: [
-          "Requires commercial API access keys with paid quotas",
-          "Domain warm-up and spam-filtering deliverability lead time",
-          "Ongoing human oversight for edge cases and exceptions",
-        ],
-        saferRewrite: "Achievable under optimized conditions with dedicated ad spend, established domain authority, and active weekly maintenance.",
-      },
-      {
-        id: "claim-2",
-        quotedText: "Zero downside risk and 100% automated end-to-end with zero ongoing maintenance required.",
-        classification: "Missing Material Context / Prerequisites",
-        heuristicConcern: "Automation Resiliency & Drift",
-        evidenceReasoning: "Third-party UI selectors and upstream REST API schemas change frequently. Production systems require automated telemetry and regression monitors.",
-        prerequisitesMissing: [
-          "Automated selector health monitors",
-          "Webhook retry queues with exponential backoff",
-          "Human-in-the-loop exception dashboard",
-        ],
-        saferRewrite: "Semi-automated workflow that handles standard path operations while routing unexpected errors to an operator queue.",
-      },
-    ],
-    sandboxTestPlan: {
-      title: "De-Risked 48-Hour Validation Experiment",
-      budgetLimit: "$15 - $30",
-      timeframe: "48 Hours",
-      hypothesis: "A manual or semi-automated prototype can validate customer conversion before investing in full infrastructure.",
-      steps: [
-        "1. Create a single-page landing page with clear value proposition and waitlist/pre-order CTA.",
-        "2. Run $15 in targeted social test ads or pitch to 10 direct outreach prospects.",
-        "3. Manually fulfill the first 2 customer workflows using existing desktop tools to measure time-to-deliver.",
-        "4. Calculate exact unit economics (time spent, software fees, payment processing fees) to establish baseline margin.",
-      ],
-      killCriteria: [
-        "Customer Acquisition Cost exceeds 40% of anticipated lifetime value",
-        "Third-party platform terms of service prohibit automated scraping of target data",
-        "Manual fulfillment takes longer than 4 hours per unit without path to 80% automation",
-      ],
-      successSignal: "Minimum 3 validated pre-orders or 15% conversion on qualified landing page traffic with positive unit economics.",
-    },
-  };
-}
-
-function generateLocalSkillPackage(
-  content: string,
-  skillName?: string,
-  targetPlatform?: string,
-  sourceModality?: string
-) {
-  const name = skillName || "1WithOut Automation Skill";
-  return {
-    skillName: name,
-    description: `Automated 5-to-10 step agent execution package generated by 1WithOut Master Engine.`,
-    version: "2.0.0",
-    targetPlatform: targetPlatform || "universal",
-    sourceModality: sourceModality || "text",
-    directivesCount: 6,
-    dependencies: ["@playwright/test", "dotenv", "node-fetch"],
-    steps: [
-      {
-        id: "step-1",
-        order: 1,
-        title: "Initialize Session & Authenticate",
-        actionType: "browser_action",
-        assignedAgentRole: "DOM_BROWSER_AGENT",
-        agentCapabilitySummary: "Handles browser navigation, element selectors, and session persistence.",
-        instruction: "Navigate to target portal and authenticate using environment credentials.",
-        target: "https://app.target-service.com/login",
-        parameters: JSON.stringify({ timeout: 15000, waitForSelector: "#dashboard-main" }),
-        errorHandling: "If 2FA is triggered, route to HUMAN_GATEKEEPER decision gate and pause timer.",
-        verificationCheck: "Assert window.location.pathname matches '/dashboard'.",
-        rollbackAction: "Clear cookies and reload login page.",
-      },
-      {
-        id: "step-2",
-        order: 2,
-        title: "Defense-of-Break Security Scan",
-        actionType: "verification",
-        assignedAgentRole: "SECURITY_SENTINEL",
-        agentCapabilitySummary: "Scans payload for unredacted personal credentials and unauthorized operations.",
-        instruction: "Inspect payload to ensure all mandatory fields are present with zero raw SSNs or private credentials.",
-        target: "1WithOut Defense Sentinel",
-        parameters: JSON.stringify({ strict: true, maskPII: true }),
-        errorHandling: "Halt execution and flag Defense-of-Break violation.",
-        verificationCheck: "Defense scanner returns { isBlocked: false }.",
-        rollbackAction: "Purge memory buffers and quarantine payload.",
-      },
-      {
-        id: "step-3",
-        order: 3,
-        title: "IndexedDB Outbox Queue Staging",
-        actionType: "api_action",
-        assignedAgentRole: "PWA_WORKER_ENGINE",
-        agentCapabilitySummary: "Manages offline-first IndexedDB mutations and Service Worker sync registrations.",
-        instruction: "Persist normalized payload to client-side IndexedDB 'outbox_mutations' store.",
-        target: "IndexedDB: outbox_mutations",
-        parameters: JSON.stringify({ storeName: "outbox_mutations", syncTag: "sync-outbox-mutations" }),
-        errorHandling: "Retry with fallback localStorage buffer.",
-        verificationCheck: "IndexedDB record successfully written with auto-generated ID.",
-        rollbackAction: "Delete transient record from outbox.",
-      },
-      {
-        id: "step-4",
-        order: 4,
-        title: "Trigger Core Execution REST Pipeline",
-        actionType: "api_action",
-        assignedAgentRole: "API_ORCHESTRATOR",
-        agentCapabilitySummary: "Executes idempotent HTTP POST requests with exponential backoff.",
-        instruction: "Dispatch batched items to REST endpoint with idempotent client request ID.",
-        target: "/api/v1/jobs/batch-process",
-        parameters: JSON.stringify({ method: "POST", retryCount: 3, timeoutMs: 10000 }),
-        errorHandling: "Retry with exponential backoff on HTTP 429 / 503.",
-        verificationCheck: "Response returns HTTP 200 with job_id.",
-        rollbackAction: "Send DELETE request with idempotency key to cancel job.",
-      },
-      {
-        id: "step-5",
-        order: 5,
-        title: "Schema & Quality Review Gate",
-        actionType: "decision_gate",
-        assignedAgentRole: "SCHEMA_VERIFIER",
-        agentCapabilitySummary: "Evaluates output confidence scores and data consistency.",
-        instruction: "Check if computed confidence score exceeds 0.92. If lower, flag for human operator review.",
-        target: "Confidence Gate",
-        parameters: JSON.stringify({ threshold: 0.92 }),
-        errorHandling: "Route to HUMAN_GATEKEEPER review queue with snapshot context.",
-        verificationCheck: "Gate status evaluated to APPROVED or ROUTED_TO_OPERATOR.",
-        rollbackAction: "Hold batch in pending state.",
-      },
-      {
-        id: "step-6",
-        order: 6,
-        title: "Broadcast Completion & Telemetry",
-        actionType: "verification",
-        assignedAgentRole: "PWA_WORKER_ENGINE",
-        agentCapabilitySummary: "Dispatches PostMessage sync confirmation to all open tabs.",
-        instruction: "Broadcast 'SYNC_COMPLETE' event to window clients and record telemetry audit hash.",
-        target: "Client BroadcastChannel / Service Worker",
-        parameters: JSON.stringify({ event: "SYNC_COMPLETE" }),
-        errorHandling: "Log warning to console without blocking.",
-        verificationCheck: "BroadcastChannel returns active client ACK.",
-        rollbackAction: "N/A",
-      },
-    ],
-    skillMarkdown: `---
-name: "${name.toLowerCase().replace(/[^a-z0-9]/g, "-")}"
-description: "Production-grade 5-to-10 step execution skill for ${name} generated by 1WithOut Master Engine."
-platform: "${targetPlatform || "universal"}"
-version: "2.0.0"
-directives_count: 6
----
-
-# ${name} Agent Skill
-
-## Prerequisites
-- Node.js 22+
-- Playwright browser binaries
-- 1WithOut Defense-of-Break Sentinel active
-
-## 5-to-10 Directive Sequence:
-1. **[DOM_BROWSER_AGENT] Authentication**: Navigate to service and establish session.
-2. **[SECURITY_SENTINEL] Defense-of-Break Scan**: Validate safety and sanitize credentials.
-3. **[PWA_WORKER_ENGINE] IndexedDB Staging**: Stage offline mutations in local storage.
-4. **[API_ORCHESTRATOR] REST Dispatch**: Call downstream API with idempotency keys.
-5. **[SCHEMA_VERIFIER] Confidence Gate**: Evaluate output confidence (>=0.92).
-6. **[PWA_WORKER_ENGINE] Broadcast Receipt**: Emit sync completion event to clients.
-`,
-    playwrightScript: `import { test, expect } from '@playwright/test';
-
-test('${name} - 1WithOut End-to-End Test', async ({ page }) => {
-  // Step 1: Navigate & Authenticate
-  await page.goto('https://app.target-service.com/login');
-  await page.fill('input[type="email"]', process.env.SERVICE_EMAIL || 'test@example.com');
-  await page.fill('input[type="password"]', process.env.SERVICE_PASSWORD || 'secret123');
-  await page.click('button[type="submit"]');
-
-  // Step 2: Verification Assertion
-  await expect(page).toHaveURL(/.*dashboard/);
-  await expect(page.locator('#dashboard-main')).toBeVisible();
-
-  // Step 3: Action Execution
-  await page.click('[data-testid="execute-workflow-btn"]');
-  await expect(page.locator('.toast-success')).toHaveText(/Workflow Completed/);
-});
-`,
-    toolDefinitionsJson: JSON.stringify(
-      [
-        {
-          name: "execute_1without_workflow",
-          description: `Executes the ${name} 6-step automated pipeline with verification assertions.`,
-          parameters: {
-            type: "object",
-            properties: {
-              targetId: { type: "string", description: "Target entity ID to process" },
-              dryRun: { type: "boolean", description: "If true, simulates execution without state changes" },
-              securityPasscode: { type: "string", description: "Optional Defense-of-Break Passcode for allowlisted projects" },
-            },
-            required: ["targetId"],
-          },
-        },
-      ],
-      null,
-      2
-    ),
-    pwaManifestJson: JSON.stringify(
-      {
-        name: name,
-        short_name: name.slice(0, 12),
-        start_url: "/",
-        display: "standalone",
-        background_color: "#020617",
-        theme_color: "#10b981",
-        description: `1WithOut PWA Application for ${name}`,
-        icons: [
-          {
-            src: "/icon.png",
-            sizes: "512x512",
-            type: "image/png",
-          },
-        ],
-      },
-      null,
-      2
-    ),
-  };
-}
-
-function generateLocalAuditReport(appName?: string, stackDescription?: string, liveUrl?: string, repoUrl?: string) {
-  const name = appName || "1WithOut PWA Application";
-  return {
-    appName: name,
-    launchReadinessScore: 94,
-    status: "READY_TO_SHIP",
-    pillars: [
-      {
-        pillarId: "security",
-        name: "Security, Identity & Defense-of-Break",
-        score: 95,
-        summary: "Robust authentication, Defense-of-Break sentinel, secret isolation, and zero vulnerable client tokens verified.",
-        checks: [
-          {
-            id: "sec-1",
-            name: "Secrets & Credentials in Client Bundles",
-            status: "PASSED",
-            description: "No private API keys, database connection strings, or Stripe secret keys exposed in client JavaScript.",
-            recommendedFix: "Keep sensitive keys strictly behind server-side /api/* proxy endpoints.",
-          },
-          {
-            id: "sec-2",
-            name: "Defense-of-Break Sentinel & Clearances",
-            status: "PASSED",
-            description: "Real-time scanner active for personal credentials, unallowable medical claims, and unauthorized legal operations.",
-            recommendedFix: "Enforce Defense-of-Break Passcode Gate for allowlisted project overrides.",
-          },
-          {
-            id: "sec-3",
-            name: "Identity & Access Management (RBAC)",
-            status: "PASSED",
-            description: "Role-based clearance boundaries verified for sensitive operational endpoints.",
-            recommendedFix: "Maintain token expiration limits and audit access logs quarterly.",
-          },
-          {
-            id: "sec-4",
-            name: "Content Security Policy (CSP) & Headers",
-            status: "WARNING",
-            description: "Explicit CSP headers recommended to guard against script injection.",
-            recommendedFix: "Add Content-Security-Policy header with restrictive script-src directives.",
-            patchCode: `// Add to server.ts:\napp.use((req, res, next) => {\n  res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data: https:;");\n  next();\n});`,
-          },
-          {
-            id: "sec-5",
-            name: "Dependency & Supply Chain CVE Audit",
-            status: "PASSED",
-            description: "Dependencies scanned for known CVE vulnerabilities and malicious supply chain modifications.",
-            recommendedFix: "Run automated 'npm audit' in CI/CD pipeline.",
-          },
-        ],
-      },
-      {
-        pillarId: "infra",
-        name: "Infrastructure, Scalability & Engineering",
-        score: 93,
-        summary: "Cloud ingress binding on port 3000, database pool limits, error boundaries, and surge scalability verified.",
-        checks: [
-          {
-            id: "inf-1",
-            name: "Container Ingress & Port 3000 Binding",
-            status: "PASSED",
-            description: "Service binds strictly to 0.0.0.0:3000 for standard reverse proxy container ingress.",
-            recommendedFix: "Maintain PORT 3000 mapping across all production environments.",
-          },
-          {
-            id: "inf-2",
-            name: "Scalability, Database Pool & Surge Limits",
-            status: "PASSED",
-            description: "Database connection pooling configured to prevent socket exhaustion under surge traffic.",
-            recommendedFix: "Set pool max connections to 10 for scale-to-zero instances.",
-          },
-          {
-            id: "inf-3",
-            name: "Error Boundaries & Graceful Fallback Handling",
-            status: "PASSED",
-            description: "Unhandled rejections and uncaught exceptions caught gracefully with fallback heuristic engines.",
-            recommendedFix: "Forward structured JSON telemetry to centralized log collector.",
-          },
-          {
-            id: "inf-4",
-            name: "Code Quality, Modularity & Maintainability",
-            status: "PASSED",
-            description: "Modular component architecture, centralized TypeScript types, and zero monolithic file hazards.",
-            recommendedFix: "Enforce strict ESLint and TypeScript compilation in build scripts.",
-          },
-          {
-            id: "inf-5",
-            name: "Cloud SDK & Cost Optimization",
-            status: "PASSED",
-            description: "Scale-to-zero infrastructure and cached responses prevent unexpected cloud runtime costs.",
-            recommendedFix: "Monitor idle instance sleep intervals and CDN edge cache hit ratios.",
-          },
-        ],
-      },
-      {
-        pillarId: "legal",
-        name: "Legal, Compliance, Billing & Data Privacy",
-        score: 92,
-        summary: "Stripe billing with tax compliance, ToS & Privacy policies, GDPR user erasure, and open-source licenses verified.",
-        checks: [
-          {
-            id: "leg-1",
-            name: "Billing & Tax Calculation Integrity",
-            status: "PASSED",
-            description: "Stripe webhook signature validation and automated sales tax calculation active for all checkout flows.",
-            recommendedFix: "Maintain idempotency records in database to avoid duplicate billing events.",
-          },
-          {
-            id: "leg-2",
-            name: "Terms of Service & Open-Source Licenses",
-            status: "PASSED",
-            description: "Standard terms of service, open-source dependency licenses, and legal notices verified.",
-            recommendedFix: "Keep /terms link accessible in application footer and registration forms.",
-          },
-          {
-            id: "leg-3",
-            name: "Data Collection, Storage & GDPR/CCPA Erasure",
-            status: "PASSED",
-            description: "User-authored data stored securely with structured export and deletion endpoints implemented.",
-            recommendedFix: "Ensure automated purge scripts remove orphaned session artifacts after 30 days.",
-          },
-        ],
-      },
-      {
-        pillarId: "claims",
-        name: "Marketing, Copy, Discoverability & Claims",
-        score: 96,
-        summary: "Landing page copy optimized, value proposition clear and non-vague, zero unsubstantiated ROI claims.",
-        checks: [
-          {
-            id: "clm-1",
-            name: "Landing Page Copy & CTA Optimization",
-            status: "PASSED",
-            description: "Clear headline hierarchy, primary call-to-action above the fold, and transparent pricing structure.",
-            recommendedFix: "A/B test secondary action button copy for conversion optimization.",
-          },
-          {
-            id: "clm-2",
-            name: "Empirical Claims & Anti-False-Promise Verification",
-            status: "PASSED",
-            description: "All marketing copy verified to eliminate deceptive passive income guarantees, impossible win-rates, or unverified claims.",
-            recommendedFix: "Provide low-cost sandbox test plans for real-world proof of capability.",
-          },
-          {
-            id: "clm-3",
-            name: "Brand Cohesion, Discoverability & Shareability",
-            status: "PASSED",
-            description: "Consistent branding, OpenGraph meta tags, and structured schema tags configured for discovery.",
-            recommendedFix: "Verify Twitter card and OpenGraph image dimensions (1200x630px).",
-          },
-        ],
-      },
-      {
-        pillarId: "qa",
-        name: "Interface, Mobile, Touch & Accessibility",
-        score: 94,
-        summary: "PWA standalone mode, mobile & tablet responsive polish, >=44px touch targets, and WCAG AA contrast verified.",
-        checks: [
-          {
-            id: "qa-1",
-            name: "PWA Web App Manifest & Service Worker",
-            status: "PASSED",
-            description: "manifest.json configured with standalone display mode, #020617 background, and high-res adaptive icons.",
-            recommendedFix: "Verify Service Worker cache-first offline asset strategy.",
-          },
-          {
-            id: "qa-2",
-            name: "Mobile & Tablet Responsiveness (>=44px Touch Targets)",
-            status: "PASSED",
-            description: "Adaptive layout verified on 375px mobile and 768px tablet viewports with >=44px touch tap targets.",
-            recommendedFix: "Maintain comfortable padding between adjacent interactive chips.",
-          },
-          {
-            id: "qa-3",
-            name: "Accessibility (WCAG 2.1 AA & Keyboard Nav)",
-            status: "PASSED",
-            description: "Text-to-background contrast exceeds 4.5:1 ratio with full keyboard focus rings on interactive elements.",
-            recommendedFix: "Ensure aria-labels exist on icon-only action triggers.",
-          },
-          {
-            id: "qa-4",
-            name: "Visual Polish, Design Consistency & Performance",
-            status: "PASSED",
-            description: "High-contrast dark luxury theme, consistent typography scale, and sub-100ms UI interaction latencies.",
-            recommendedFix: "Run compression and code-splitting checks on production asset build.",
-          },
-          {
-            id: "qa-5",
-            name: "Test Coverage, Playwright QA & Documentation",
-            status: "PASSED",
-            description: "Critical execution paths covered with automated test assertions and user-facing SOP documentation.",
-            recommendedFix: "Add regression tests for new workflow step additions.",
-          },
-        ],
-      },
-      {
-        pillarId: "maintenance",
-        name: "Post-Launch Maintenance & Reliability Cadence",
-        score: 95,
-        summary: "Automated 30-Day, 90-Day, and 180-Day maintenance review schedules and error triage initialized.",
-        checks: [
-          {
-            id: "mnt-1",
-            name: "30-Day Early Error Triage & Funnel Review",
-            status: "PASSED",
-            description: "Schedule established to triage initial user conversion drop-offs and 4xx/5xx error anomalies.",
-            recommendedFix: "Set calendar trigger for 30 days post-deploy.",
-          },
-          {
-            id: "mnt-2",
-            name: "90-Day Dependency & API Version Refresh",
-            status: "PASSED",
-            description: "Audit scheduled for npm dependency CVEs and third-party API deprecation contracts.",
-            recommendedFix: "Run npm outdated & security audit quarterly.",
-          },
-          {
-            id: "mnt-3",
-            name: "180-Day Secret Rotation & Architecture Audit",
-            status: "PASSED",
-            description: "Rotate production API keys, database credentials, and refresh legal privacy terms.",
-            recommendedFix: "Execute semi-annual key rotation protocol.",
-          },
-        ],
-      },
-    ],
-    cadenceSchedule: {
-      day30Tasks: [
-        "Review server error logs and client-side unhandled promise rejections",
-        "Inspect Stripe dispute rates and failed invoice retry queues",
-        "Analyze landing page conversion drops and user onboarding funnel bottlenecks",
-      ],
-      day90Tasks: [
-        "Execute 'npm audit' and upgrade minor/patch dependency versions",
-        "Audit third-party webhook contracts and deprecation schedules",
-        "Evaluate database index performance and query execution latencies",
-      ],
-      day180Tasks: [
-        "Rotate production API keys, webhook secrets, and database credentials",
-        "Perform comprehensive security re-scan and access control audit",
-        "Review privacy policy and terms of service against updated legal regulations",
-      ],
-    },
-  };
-}
-
-function generateLocalPipelineResponse(mode?: string, title?: string) {
-  return {
-    title: title || "1WithOut Pipeline Workflow",
-    mode: mode || "operationalize",
-    overview: "Analyzed workflow using local 1WithOut heuristic engine. Structured into actionable milestones with strict quality and defense gates.",
-    keyTakeaways: [
-      "Validate core API assumptions in sandbox before wiring production credentials.",
-      "Implement robust offline IndexedDB storage and Service Worker sync queues for PWA resilience.",
-      "Maintain strict Defense-of-Break boundaries regarding personal credentials and medical data.",
-    ],
-    sections: [
-      {
-        heading: "Phase 1: Environment & PWA Manifest Baseline",
-        content: "Set up Web App Manifest, Service Worker caching strategies, and configure environment variables in .env.",
-        actionItems: ["Verify manifest.json icons", "Establish IndexedDB store", "Configure rate-limiting"],
-      },
-      {
-        heading: "Phase 2: 5-10 Step Autonomous Directive Execution",
-        content: "Deploy automated worker routines with idempotent job processors and specialized agent role assignments.",
-        actionItems: ["Implement DOM action retries", "Add step verification assertions", "Log audit events"],
-      },
-      {
-        heading: "Phase 3: 6-Pillar Pre-Flight Verification Matrix",
-        content: "Execute 6-pillar pre-flight audit to ensure zero security leaks, WCAG AA compliance, and verified marketing copy.",
-        actionItems: ["Run automated security scan", "Verify Stripe webhook signing", "Check touch targets >=44px"],
-      },
-    ],
-    safetyWarnings: [
-      "Never hardcode API keys or database connection strings in client bundles.",
-      "Ensure user data deletion workflows comply with GDPR/CCPA regulations.",
-    ],
-    executionChecklist: [
-      "Configure environment secrets",
-      "Deploy database schemas with migrations",
-      "Complete pre-flight 6-pillar scorecard",
-      "Set 30-day post-launch maintenance alert",
-    ],
-  };
-}
 
 // Safe Centralized Error Handler (Prevents leakage of internal stack traces)
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
